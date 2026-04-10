@@ -805,3 +805,212 @@
   .att-header .btn-primary { display: none; }
 }
 
+/* ============================================
+   REPORTS PAGE — Aggregated View Styles
+   ============================================ */
+
+/* View toggle pill-switch */
+.rpt-view-toggle {
+  display: inline-flex;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(71, 85, 105, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.rpt-view-btn {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  background: transparent;
+  transition: all 0.25s ease;
+  letter-spacing: 0.02em;
+}
+
+.rpt-view-btn.active {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.12));
+  color: #34d399;
+}
+
+.rpt-view-btn:hover:not(.active) {
+  color: #94a3b8;
+  background: rgba(51, 65, 85, 0.3);
+}
+
+/* Expandable row — parent */
+.rpt-expand-row {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.rpt-expand-row:hover {
+  background: rgba(16, 185, 129, 0.06) !important;
+}
+
+.rpt-expand-row.expanded {
+  background: rgba(16, 185, 129, 0.04);
+}
+
+/* Chevron icon */
+.rpt-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(51, 65, 85, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.rpt-chevron.open {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  transform: rotate(90deg);
+}
+
+/* Breakdown sub-row */
+.rpt-breakdown-row > td {
+  padding: 0 !important;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.15);
+}
+
+.rpt-breakdown-wrap {
+  overflow: hidden;
+  animation: rpt-expand 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes rpt-expand {
+  from {
+    max-height: 0;
+    opacity: 0;
+  }
+  to {
+    max-height: 500px;
+    opacity: 1;
+  }
+}
+
+.rpt-breakdown-inner {
+  padding: 10px 16px 14px 52px;
+}
+
+/* Nested breakdown table */
+.rpt-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(71, 85, 105, 0.2);
+}
+
+.rpt-breakdown-table th {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  background: rgba(15, 23, 42, 0.5);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.2);
+  text-align: left;
+}
+
+.rpt-breakdown-table td {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.1);
+  color: #cbd5e1;
+}
+
+.rpt-breakdown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rpt-breakdown-table tbody tr:hover {
+  background: rgba(16, 185, 129, 0.03);
+}
+
+/* Department color bar */
+.rpt-dept-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpt-dept-dot {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Percentage pill */
+.rpt-pct-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+/* Percentage bar */
+.rpt-pct-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.rpt-pct-bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(71, 85, 105, 0.25);
+  overflow: hidden;
+}
+
+.rpt-pct-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Rank badge for top 3 */
+.rpt-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.rpt-rank-1 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.rpt-rank-2 { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+.rpt-rank-3 { background: rgba(180, 130, 80, 0.2); color: #d4a373; }
+
+/* Staff count badge in grouped header */
+.rpt-dept-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+}

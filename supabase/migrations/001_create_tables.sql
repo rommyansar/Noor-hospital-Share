@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS share_rules (
 -- ============================================
 CREATE TABLE IF NOT EXISTS staff (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  staff_code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
   share_rule_id UUID NOT NULL REFERENCES share_rules(id) ON DELETE CASCADE,

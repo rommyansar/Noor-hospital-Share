@@ -29,6 +29,7 @@ export interface ShareRule {
 
 export interface Staff {
   id: string;
+  staff_code: string;
   name: string;
   department_id: string;
   share_rule_id: string;
@@ -125,6 +126,7 @@ export interface ShareRuleForm {
 }
 
 export interface StaffForm {
+  staff_code: string;
   name: string;
   department_id: string;
   share_rule_id: string;
@@ -196,4 +198,31 @@ export interface Toast {
   id: string;
   type: ToastType;
   message: string;
+}
+
+// ============================================
+// Aggregated Report Types
+// ============================================
+
+export interface BreakdownItem {
+  department_id: string;
+  department_name: string;
+  role_name: string;
+  amount: number;
+  percentage: number;
+  base_share: number;
+  attendance_ratio: number;
+  department_income: number;
+  rule_percentage: number;
+  has_override: boolean;
+  result_id: string;
+}
+
+export interface AggregatedStaffResult {
+  staff_id: string;
+  staff_code: string;
+  staff_name: string;
+  total_share: number;
+  department_count: number;
+  breakdown: BreakdownItem[];
 }

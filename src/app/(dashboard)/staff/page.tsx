@@ -13,8 +13,9 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
-  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', share_rule_id: '', is_active: true });
+  const [form, setForm] = useState<StaffForm>({ staff_code: '', name: '', department_id: '', share_rule_id: '', is_active: true });
   const [saving, setSaving] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
   const [filterDept, setFilterDept] = useState('');
   const { addToast } = useToast();
 
@@ -38,30 +39,58 @@ export default function StaffPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: '', department_id: filterDept || '', share_rule_id: '', is_active: true });
+    setForm({ staff_code: '', name: '', department_id: filterDept || '', share_rule_id: '', is_active: true });
     setShowModal(true);
   };
 
   const openEdit = (s: Staff) => {
     setEditing(s);
-    setForm({ name: s.name, department_id: s.department_id, share_rule_id: s.share_rule_id, is_active: s.is_active });
+    setForm({ staff_code: s.staff_code, name: s.name, department_id: s.department_id, share_rule_id: s.share_rule_id, is_active: s.is_active });
     setShowModal(true);
   };
 
+  const handleGenerateCode = async () => {
+    if (!form.share_rule_id) {
+       addToast('error', 'Please select a Role first to determine the code prefix.');
+       return;
+    }
+    const rule = rules.find(r => r.id === form.share_rule_id);
+    if (!rule) return;
+    
+    setGeneratingCode(true);
+    try {
+      const res = await fetch(`/api/staff/generate-code?role=${encodeURIComponent(rule.role_name)}`);
+      const data = await res.json();
+      if (data.error) addToast('error', data.error);
+      else setForm({ ...form, staff_code: data.code });
+    } catch {
+      addToast('error', 'Failed to generate code.');
+    }
+    setGeneratingCode(false);
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim() || !form.department_id || !form.share_rule_id) {
-      addToast('error', 'Fill all required fields.'); return;
+    if (!form.staff_code.trim() || !form.name.trim() || !form.department_id || !form.share_rule_id) {
+      addToast('error', 'Fill all required fields including Staff Code.'); return;
     }
     setSaving(true);
     const supabase = createClient();
 
     if (editing) {
       const { error } = await supabase.from('staff').update(form).eq('id', editing.id);
-      if (error) { addToast('error', error.message); setSaving(false); return; }
+      if (error) { 
+        if (error.code === '23505') addToast('error', 'Code is already in use. Try generating a new one.');
+        else addToast('error', error.message); 
+        setSaving(false); return; 
+      }
       addToast('success', 'Staff updated.');
     } else {
       const { error } = await supabase.from('staff').insert(form);
-      if (error) { addToast('error', error.message); setSaving(false); return; }
+      if (error) { 
+        if (error.code === '23505') addToast('error', 'Simultaneous creation detected! Code is already in use. Please regenerate and retry.');
+        else addToast('error', error.message); 
+        setSaving(false); return; 
+      }
       addToast('success', 'Staff added.');
     }
     setShowModal(false); setSaving(false); load();
@@ -111,6 +140,7 @@ export default function StaffPage() {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Code</th>
                 <th>Name</th>
                 <th>Department</th>
                 <th>Role</th>
@@ -121,6 +151,7 @@ export default function StaffPage() {
             <tbody>
               {filteredStaff.map((s) => (
                 <tr key={s.id}>
+                  <td className="font-mono text-slate-300">{s.staff_code}</td>
                   <td className="font-medium text-white">{s.name}</td>
                   <td>{s.departments?.name}</td>
                   <td><span className="badge badge-info">{s.share_rules?.role_name}</span></td>
@@ -148,11 +179,6 @@ export default function StaffPage() {
             <h2 className="text-xl font-semibold text-white mb-5">{editing ? 'Edit Staff' : 'Add Staff'}</h2>
 
             <div className="form-group">
-              <label className="form-label">Full Name</label>
-              <input className="input-field" placeholder="Staff name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-
-            <div className="form-group">
               <label className="form-label">Department</label>
               <select className="select-field" value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value, share_rule_id: '' })}>
                 <option value="">Select department</option>
@@ -169,6 +195,22 @@ export default function StaffPage() {
               {form.department_id && filteredRules.length === 0 && (
                 <p className="text-xs text-amber-400 mt-1">No rules defined for this department. Create rules first.</p>
               )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Staff Code</label>
+              <div className="flex gap-2">
+                <input className="input-field font-mono" placeholder="e.g. DOC-001" value={form.staff_code} onChange={(e) => setForm({ ...form, staff_code: e.target.value.toUpperCase() })} />
+                <button className="btn-secondary" style={{ whiteSpace: 'nowrap' }} onClick={handleGenerateCode} disabled={generatingCode || !form.share_rule_id}>
+                  {generatingCode ? '...' : 'Generate Code'}
+                </button>
+              </div>
+              {!form.share_rule_id && <p className="text-xs text-slate-500 mt-1">Select a Role first to automatically generate code.</p>}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <input className="input-field" placeholder="Staff name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
 
             <div className="form-group">

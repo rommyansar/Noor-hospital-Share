@@ -79,7 +79,7 @@ export default function StaffPage() {
     if (editing) {
       const { error } = await supabase.from('staff').update(form).eq('id', editing.id);
       if (error) { 
-        if (error.code === '23505') addToast('error', 'Code is already in use. Try generating a new one.');
+        if (error.code === '23505') addToast('error', 'This staff member is already assigned to this role in this department.');
         else addToast('error', error.message); 
         setSaving(false); return; 
       }
@@ -87,7 +87,7 @@ export default function StaffPage() {
     } else {
       const { error } = await supabase.from('staff').insert(form);
       if (error) { 
-        if (error.code === '23505') addToast('error', 'Simultaneous creation detected! Code is already in use. Please regenerate and retry.');
+        if (error.code === '23505') addToast('error', 'This staff member is already assigned to this role in this department.');
         else addToast('error', error.message); 
         setSaving(false); return; 
       }
@@ -136,41 +136,81 @@ export default function StaffPage() {
           <p className="text-sm text-slate-500 mt-1">Add staff and assign them to departments & roles.</p>
         </div>
       ) : (
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Department</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStaff.map((s) => (
-                <tr key={s.id}>
-                  <td className="font-mono text-slate-300">{s.staff_code}</td>
-                  <td className="font-medium text-white">{s.name}</td>
-                  <td>{s.departments?.name}</td>
-                  <td><span className="badge badge-info">{s.share_rules?.role_name}</span></td>
-                  <td>
-                    <button onClick={() => toggleActive(s)}>
-                      <div className={`toggle-switch ${s.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
-                    </button>
-                  </td>
-                  <td>
-                    <div className="flex gap-2 justify-end">
-                      <button className="btn-secondary btn-sm" onClick={() => openEdit(s)}><Edit2 size={14} /></button>
-                      <button className="btn-danger btn-sm" onClick={() => handleDelete(s)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
+        <>
+          {/* Desktop Table */}
+          <div className="glass-card table-container hidden md:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Department</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredStaff.map((s) => (
+                  <tr key={s.id}>
+                    <td className="font-mono text-slate-300">{s.staff_code}</td>
+                    <td className="font-medium text-white">{s.name}</td>
+                    <td>{s.departments?.name}</td>
+                    <td><span className="badge badge-info">{s.share_rules?.role_name}</span></td>
+                    <td>
+                      <button onClick={() => toggleActive(s)}>
+                        <div className={`toggle-switch ${s.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
+                      </button>
+                    </td>
+                    <td>
+                      <div className="flex gap-2 justify-end">
+                        <button className="btn-secondary btn-sm" onClick={() => openEdit(s)}><Edit2 size={14} /></button>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(s)}><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden flex flex-col gap-4">
+            {filteredStaff.map((s) => (
+              <div key={s.id} className="glass-card p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
+                  <div>
+                    <div className="font-medium text-white text-lg">{s.name}</div>
+                    <div className="text-sm font-mono text-slate-400 mt-1">{s.staff_code}</div>
+                  </div>
+                  <button onClick={() => toggleActive(s)}>
+                    <div className={`toggle-switch ${s.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 text-sm py-1">
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Dept</span>
+                    <span className="text-slate-300">{s.departments?.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Role</span>
+                    <span className="badge badge-info">{s.share_rules?.role_name}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50 mt-1">
+                  <button className="btn-secondary flex-1 justify-center" onClick={() => openEdit(s)}>
+                    <Edit2 size={16} /> Edit
+                  </button>
+                  <button className="btn-danger flex-1 justify-center" onClick={() => handleDelete(s)}>
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {showModal && (

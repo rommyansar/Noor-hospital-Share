@@ -94,49 +94,87 @@ export default function DepartmentsPage() {
           <p className="text-sm text-slate-500 mt-1">Create your first department to get started.</p>
         </div>
       ) : (
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {departments.map((dept) => (
-                <tr key={dept.id}>
-                  <td className="font-medium text-white">{dept.name}</td>
-                  <td>
-                    <span className={`badge ${dept.type === 'clinical' ? 'badge-info' : 'badge-warning'}`}>
-                      {dept.type === 'clinical' ? 'Clinical' : 'Non-Clinical'}
-                    </span>
-                  </td>
-                  <td>
-                    <button onClick={() => toggleActive(dept)}>
-                      <div className={`toggle-switch ${dept.is_active ? 'active' : 'inactive'}`}>
-                        <div className="toggle-knob" />
-                      </div>
-                    </button>
-                  </td>
-                  <td className="text-slate-400">{new Date(dept.created_at).toLocaleDateString()}</td>
-                  <td>
-                    <div className="flex gap-2 justify-end">
-                      <button className="btn-secondary btn-sm" onClick={() => openEdit(dept)}>
-                        <Edit2 size={14} />
-                      </button>
-                      <button className="btn-danger btn-sm" onClick={() => handleDelete(dept)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+        <>
+          {/* Desktop Table */}
+          <div className="glass-card table-container hidden md:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {departments.map((dept) => (
+                  <tr key={dept.id}>
+                    <td className="font-medium text-white">{dept.name}</td>
+                    <td>
+                      <span className={`badge ${dept.type === 'clinical' ? 'badge-info' : 'badge-warning'}`}>
+                        {dept.type === 'clinical' ? 'Clinical' : 'Non-Clinical'}
+                      </span>
+                    </td>
+                    <td>
+                      <button onClick={() => toggleActive(dept)}>
+                        <div className={`toggle-switch ${dept.is_active ? 'active' : 'inactive'}`}>
+                          <div className="toggle-knob" />
+                        </div>
+                      </button>
+                    </td>
+                    <td className="text-slate-400">{new Date(dept.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <div className="flex gap-2 justify-end">
+                        <button className="btn-secondary btn-sm" onClick={() => openEdit(dept)}>
+                          <Edit2 size={14} />
+                        </button>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(dept)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden flex flex-col gap-4">
+            {departments.map((dept) => (
+              <div key={dept.id} className="glass-card p-4 flex flex-col gap-3 relative">
+                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
+                  <div>
+                    <div className="font-medium text-white text-lg">{dept.name}</div>
+                    <div className="text-sm text-slate-400 mt-1">Created: {new Date(dept.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <button onClick={() => toggleActive(dept)}>
+                    <div className={`toggle-switch ${dept.is_active ? 'active' : 'inactive'}`}>
+                      <div className="toggle-knob" />
+                    </div>
+                  </button>
+                </div>
+
+                <div className="py-1">
+                   <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Type</span>
+                   <span className={`badge ${dept.type === 'clinical' ? 'badge-info' : 'badge-warning'}`}>
+                     {dept.type === 'clinical' ? 'Clinical' : 'Non-Clinical'}
+                   </span>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50 mt-1">
+                  <button className="btn-secondary flex-1 justify-center" onClick={() => openEdit(dept)}>
+                    <Edit2 size={16} /> Edit
+                  </button>
+                  <button className="btn-danger flex-1 justify-center" onClick={() => handleDelete(dept)}>
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Modal */}

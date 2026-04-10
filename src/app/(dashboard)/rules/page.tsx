@@ -115,55 +115,111 @@ export default function RulesPage() {
           <p className="text-sm text-slate-500 mt-1">Define how income is shared among staff roles.</p>
         </div>
       ) : (
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th>Role</th>
-                <th>Percentage</th>
-                <th>Distribution</th>
-                <th>Absent Handling</th>
-                <th>Effective</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id}>
-                  <td className="font-medium text-white">{r.departments?.name}</td>
-                  <td>{r.role_name}</td>
-                  <td>
-                    <span className="text-emerald-400 font-semibold">{r.share_percentage}%</span>
-                  </td>
-                  <td>
+        <>
+          {/* Desktop Table */}
+          <div className="glass-card table-container hidden lg:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Role</th>
+                  <th>Percentage</th>
+                  <th>Distribution</th>
+                  <th>Absent Handling</th>
+                  <th>Effective</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={r.id}>
+                    <td className="font-medium text-white">{r.departments?.name}</td>
+                    <td>{r.role_name}</td>
+                    <td>
+                      <span className="text-emerald-400 font-semibold">{r.share_percentage}%</span>
+                    </td>
+                    <td>
+                      <span className={`badge ${r.distribution_type === 'pool' ? 'badge-info' : 'badge-warning'}`}>
+                        {r.distribution_type === 'pool' ? 'Pool' : 'Per Person'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${r.absent_handling === 'exclude' ? 'badge-success' : 'badge-warning'}`}>
+                        {r.absent_handling === 'exclude' ? 'Exclude' : 'Include'}
+                      </span>
+                    </td>
+                    <td className="text-slate-400 text-xs">
+                      {r.effective_from ? new Date(r.effective_from).toLocaleDateString() : '—'}
+                      {' → '}
+                      {r.effective_to ? new Date(r.effective_to).toLocaleDateString() : 'Ongoing'}
+                    </td>
+                    <td><span className={`badge ${r.is_active ? 'badge-success' : 'badge-danger'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td>
+                      <div className="flex gap-2 justify-end">
+                        <button className="btn-secondary btn-sm" onClick={() => openEdit(r)}><Edit2 size={14} /></button>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(r)}><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="lg:hidden flex flex-col gap-4">
+            {filtered.map((r) => (
+              <div key={r.id} className="glass-card p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
+                  <div>
+                    <div className="font-medium text-white text-lg">{r.role_name}</div>
+                    <div className="text-sm text-slate-400 mt-1">{r.departments?.name}</div>
+                  </div>
+                  <span className={`badge ${r.is_active ? 'badge-success' : 'badge-danger'}`}>
+                    {r.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm py-1">
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Share %</span>
+                    <span className="text-emerald-400 font-semibold text-base">{r.share_percentage}%</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Distribution</span>
                     <span className={`badge ${r.distribution_type === 'pool' ? 'badge-info' : 'badge-warning'}`}>
                       {r.distribution_type === 'pool' ? 'Pool' : 'Per Person'}
                     </span>
-                  </td>
-                  <td>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Absent Staff</span>
                     <span className={`badge ${r.absent_handling === 'exclude' ? 'badge-success' : 'badge-warning'}`}>
                       {r.absent_handling === 'exclude' ? 'Exclude' : 'Include'}
                     </span>
-                  </td>
-                  <td className="text-slate-400 text-xs">
-                    {r.effective_from ? new Date(r.effective_from).toLocaleDateString() : '—'}
-                    {' → '}
-                    {r.effective_to ? new Date(r.effective_to).toLocaleDateString() : 'Ongoing'}
-                  </td>
-                  <td><span className={`badge ${r.is_active ? 'badge-success' : 'badge-danger'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td>
-                    <div className="flex gap-2 justify-end">
-                      <button className="btn-secondary btn-sm" onClick={() => openEdit(r)}><Edit2 size={14} /></button>
-                      <button className="btn-danger btn-sm" onClick={() => handleDelete(r)}><Trash2 size={14} /></button>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Effective</span>
+                    <div className="text-slate-400 text-xs mt-1">
+                      {r.effective_from ? new Date(r.effective_from).toLocaleDateString() : '—'}
+                      <br/>↓<br/>
+                      {r.effective_to ? new Date(r.effective_to).toLocaleDateString() : 'Ongoing'}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50 mt-1">
+                  <button className="btn-secondary flex-1 justify-center" onClick={() => openEdit(r)}>
+                    <Edit2 size={16} /> Edit
+                  </button>
+                  <button className="btn-danger flex-1 justify-center" onClick={() => handleDelete(r)}>
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Modal */}

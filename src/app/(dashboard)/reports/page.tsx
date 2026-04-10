@@ -75,17 +75,17 @@ export default function ReportsPage() {
   });
   const totalPayout = filteredResults.reduce((s, r) => s + Number(r.manual_override ?? r.final_share), 0);
 
-  // ── Memoized aggregation: group by staff_id ──
+  // ── Memoized aggregation: group by staff_code ──
   const aggregatedStaff = useMemo<AggregatedStaffResult[]>(() => {
     const staffMap = new Map<string, AggregatedStaffResult>();
 
     filteredResults.forEach(r => {
-      const staffId = r.staff_id;
+      const groupKey = r.staff?.staff_code || r.staff_id;
       const share = Number(r.manual_override ?? r.final_share);
 
-      if (!staffMap.has(staffId)) {
-        staffMap.set(staffId, {
-          staff_id: staffId,
+      if (!staffMap.has(groupKey)) {
+        staffMap.set(groupKey, {
+          staff_id: groupKey, // Using groupKey as the unique identifier for UI expansion state
           staff_code: r.staff?.staff_code || '',
           staff_name: r.staff?.name || 'Unknown',
           total_share: 0,
@@ -94,7 +94,7 @@ export default function ReportsPage() {
         });
       }
 
-      const entry = staffMap.get(staffId)!;
+      const entry = staffMap.get(groupKey)!;
       entry.total_share += share;
       entry.breakdown.push({
         department_id: r.department_id,
@@ -325,212 +325,339 @@ export default function ReportsPage() {
         </div>
       ) : tab === 'staff' && viewMode === 'grouped' ? (
         /* ──────── GROUPED VIEW ──────── */
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}></th>
-                <th>Staff Name</th>
-                <th>Departments</th>
-                <th style={{ textAlign: 'right' }}>Total Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aggregatedStaff.map((staff, idx) => {
-                const isExpanded = expandedRows.has(staff.staff_id);
-                return (
-                  <>
-                    <tr
-                      key={staff.staff_id}
-                      className={`rpt-expand-row ${isExpanded ? 'expanded' : ''}`}
-                      onClick={() => toggleExpand(staff.staff_id)}
-                    >
-                      <td>
-                        <span className={`rpt-chevron ${isExpanded ? 'open' : ''}`}>
-                          <ChevronRight size={14} />
-                        </span>
-                      </td>
-                      <td>
-                        <div className="flex items-center">
-                          {idx < 3 && (
-                            <span className={`rpt-rank-badge rpt-rank-${idx + 1}`}>
-                              {idx + 1}
-                            </span>
-                          )}
-                          <span className="font-mono text-slate-400 text-xs mr-2">{staff.staff_code}</span>
-                          <span className="font-medium text-white">{staff.staff_name}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="rpt-dept-count">
-                          {staff.department_count} dept{staff.department_count > 1 ? 's' : ''}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span className="font-bold text-emerald-400 text-base">
-                          ₹{staff.total_share.toLocaleString('en-IN')}
-                        </span>
-                      </td>
-                    </tr>
-
-                    {isExpanded && (
-                      <tr key={`${staff.staff_id}-breakdown`} className="rpt-breakdown-row">
-                        <td colSpan={4}>
-                          <div className="rpt-breakdown-wrap">
-                            <div className="rpt-breakdown-inner">
-                              <table className="rpt-breakdown-table">
-                                <thead>
-                                  <tr>
-                                    <th>Department</th>
-                                    <th>Role</th>
-                                    <th>Dept Income</th>
-                                    <th>Rule %</th>
-                                    <th>Attendance</th>
-                                    <th>Amount</th>
-                                    <th>Contribution</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {staff.breakdown.map(b => (
-                                    <tr key={b.result_id}>
-                                      <td>
-                                        <div className="rpt-dept-bar">
-                                          <span
-                                            className="rpt-dept-dot"
-                                            style={{ backgroundColor: getDeptColor(b.department_name) }}
-                                          />
-                                          <span className="text-white font-medium">{b.department_name}</span>
-                                        </div>
-                                      </td>
-                                      <td>
-                                        <span className="badge badge-info">{b.role_name}</span>
-                                      </td>
-                                      <td>₹{b.department_income.toLocaleString('en-IN')}</td>
-                                      <td>{b.rule_percentage}%</td>
-                                      <td>
-                                        <span className={`badge ${b.attendance_ratio >= 0.8 ? 'badge-success' : 'badge-warning'}`}>
-                                          {(b.attendance_ratio * 100).toFixed(1)}%
-                                        </span>
-                                      </td>
-                                      <td className="font-semibold text-emerald-400">
-                                        ₹{b.amount.toLocaleString('en-IN')}
-                                        {b.has_override && (
-                                          <span className="badge badge-warning ml-2" style={{ fontSize: 10 }}>Override</span>
-                                        )}
-                                      </td>
-                                      <td>
-                                        <div className="rpt-pct-bar-wrap">
-                                          <div className="rpt-pct-bar-track">
-                                            <div
-                                              className="rpt-pct-bar-fill"
-                                              style={{ width: `${Math.min(b.percentage, 100)}%` }}
-                                            />
-                                          </div>
-                                          <span className="rpt-pct-pill">{b.percentage.toFixed(1)}%</span>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+        <>
+          <div className="glass-card table-container hidden lg:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}></th>
+                  <th>Staff Name</th>
+                  <th>Departments</th>
+                  <th style={{ textAlign: 'right' }}>Total Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregatedStaff.map((staff, idx) => {
+                  const isExpanded = expandedRows.has(staff.staff_id);
+                  return (
+                    <>
+                      <tr
+                        key={staff.staff_id}
+                        className={`rpt-expand-row ${isExpanded ? 'expanded' : ''}`}
+                        onClick={() => toggleExpand(staff.staff_id)}
+                      >
+                        <td>
+                          <span className={`rpt-chevron ${isExpanded ? 'open' : ''}`}>
+                            <ChevronRight size={14} />
+                          </span>
+                        </td>
+                        <td>
+                          <div className="flex items-center">
+                            {idx < 3 && (
+                              <span className={`rpt-rank-badge rpt-rank-${idx + 1}`}>
+                                {idx + 1}
+                              </span>
+                            )}
+                            <span className="font-mono text-slate-400 text-xs mr-2">{staff.staff_code}</span>
+                            <span className="font-medium text-white">{staff.staff_name}</span>
                           </div>
                         </td>
+                        <td>
+                          <span className="rpt-dept-count">
+                            {staff.department_count} dept{staff.department_count > 1 ? 's' : ''}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span className="font-bold text-emerald-400 text-base">
+                            ₹{staff.total_share.toLocaleString('en-IN')}
+                          </span>
+                        </td>
                       </tr>
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+
+                      {isExpanded && (
+                        <tr key={`${staff.staff_id}-breakdown`} className="rpt-breakdown-row">
+                          <td colSpan={4}>
+                            <div className="rpt-breakdown-wrap">
+                              <div className="rpt-breakdown-inner">
+                                <table className="rpt-breakdown-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Department</th>
+                                      <th>Role</th>
+                                      <th>Dept Income</th>
+                                      <th>Rule %</th>
+                                      <th>Attendance</th>
+                                      <th>Amount</th>
+                                      <th>Contribution</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {staff.breakdown.map(b => (
+                                      <tr key={b.result_id}>
+                                        <td>
+                                          <div className="rpt-dept-bar">
+                                            <span
+                                              className="rpt-dept-dot"
+                                              style={{ backgroundColor: getDeptColor(b.department_name) }}
+                                            />
+                                            <span className="text-white font-medium">{b.department_name}</span>
+                                          </div>
+                                        </td>
+                                        <td>
+                                          <span className="badge badge-info">{b.role_name}</span>
+                                        </td>
+                                        <td>₹{b.department_income.toLocaleString('en-IN')}</td>
+                                        <td>{b.rule_percentage}%</td>
+                                        <td>
+                                          <span className={`badge ${b.attendance_ratio >= 0.8 ? 'badge-success' : 'badge-warning'}`}>
+                                            {(b.attendance_ratio * 100).toFixed(1)}%
+                                          </span>
+                                        </td>
+                                        <td className="font-semibold text-emerald-400">
+                                          ₹{b.amount.toLocaleString('en-IN')}
+                                          {b.has_override && (
+                                            <span className="badge badge-warning ml-2" style={{ fontSize: 10 }}>Override</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          <div className="rpt-pct-bar-wrap">
+                                            <div className="rpt-pct-bar-track">
+                                              <div
+                                                className="rpt-pct-bar-fill"
+                                                style={{ width: `${Math.min(b.percentage, 100)}%` }}
+                                              />
+                                            </div>
+                                            <span className="rpt-pct-pill">{b.percentage.toFixed(1)}%</span>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="lg:hidden flex flex-col gap-4">
+            {aggregatedStaff.map((staff, idx) => {
+              const isExpanded = expandedRows.has(staff.staff_id);
+              return (
+                <div key={staff.staff_id} className="glass-card p-4 flex flex-col gap-3">
+                  <div 
+                    className="flex justify-between items-center cursor-pointer"
+                    onClick={() => toggleExpand(staff.staff_id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {idx < 3 && (
+                        <span className={`rpt-rank-badge rpt-rank-${idx + 1}`}>{idx + 1}</span>
+                      )}
+                      <div>
+                        <div className="font-medium text-white">{staff.staff_name}</div>
+                        <div className="font-mono text-slate-400 text-xs">{staff.staff_code} &bull; {staff.department_count} dept{staff.department_count > 1 ? 's' : ''}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-bold text-emerald-400">₹{staff.total_share.toLocaleString('en-IN')}</span>
+                      <span className="text-slate-400 transition-transform" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                        <ChevronRight size={18} />
+                      </span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-slate-700/50">
+                      {staff.breakdown.map(b => (
+                        <div key={b.result_id} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 text-sm">
+                          <div className="flex justify-between items-start mb-2 border-b border-slate-700/50 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="rpt-dept-dot shadow-sm" style={{ backgroundColor: getDeptColor(b.department_name) }} />
+                              <span className="text-white font-medium">{b.department_name}</span>
+                            </div>
+                            <span className="badge badge-info">{b.role_name}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-y-2 text-xs">
+                            <div className="text-slate-400">Rule %: <span className="text-slate-200">{b.rule_percentage}%</span></div>
+                            <div className="text-slate-400 text-right">Att: <span className={`badge ${b.attendance_ratio >= 0.8 ? 'badge-success' : 'badge-warning'} scale-90 origin-right`}>{(b.attendance_ratio * 100).toFixed(1)}%</span></div>
+                            <div className="text-slate-400">Amount: <span className="font-semibold text-emerald-400">₹{b.amount.toLocaleString('en-IN')}</span></div>
+                            <div className="text-slate-400 text-right">Contrib: <span className="text-white">{b.percentage.toFixed(1)}%</span></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       ) : tab === 'staff' && viewMode === 'raw' ? (
         /* ──────── RAW VIEW (original table) ──────── */
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Staff</th>
-                <th>Department</th>
-                <th>Role</th>
-                <th>Income</th>
-                <th>Rule %</th>
-                <th>Base Share</th>
-                <th>Attendance</th>
-                <th>Final Share</th>
-                <th>Override</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredResults.map(r => (
-                <tr key={r.id}>
-                  <td className="font-medium text-white">
-                    <span className="font-mono text-slate-400 text-xs mr-2">{r.staff?.staff_code}</span>
-                    {r.staff?.name}
-                  </td>
-                  <td>{r.departments?.name}</td>
-                  <td><span className="badge badge-info">{r.share_rules?.role_name}</span></td>
-                  <td>₹{Number(r.department_income).toLocaleString('en-IN')}</td>
-                  <td>{r.rule_percentage}%</td>
-                  <td>₹{Number(r.base_share).toLocaleString('en-IN')}</td>
-                  <td>
-                    <span className={`badge ${Number(r.attendance_ratio) >= 0.8 ? 'badge-success' : 'badge-warning'}`}>
-                      {(Number(r.attendance_ratio) * 100).toFixed(1)}%
-                    </span>
-                  </td>
-                  <td className="font-bold text-emerald-400">₹{Number(r.manual_override ?? r.final_share).toLocaleString('en-IN')}</td>
-                  <td>
-                    {r.manual_override != null ? (
-                      <span className="badge badge-warning" title={r.override_reason || ''}>Overridden</span>
-                    ) : <span className="text-slate-600">—</span>}
-                  </td>
-                  <td>
-                    <div className="flex justify-end">
-                      <button className="btn-secondary btn-sm" onClick={() => {
-                        setOverrideResult(r);
-                        setOverrideAmount(String(r.manual_override ?? r.final_share));
-                        setOverrideReason(r.override_reason || '');
-                      }} disabled={r.is_locked}>
-                        <Edit3 size={14} />
-                      </button>
-                    </div>
-                  </td>
+        <>
+          <div className="glass-card table-container hidden lg:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Staff</th>
+                  <th>Department</th>
+                  <th>Role</th>
+                  <th>Income</th>
+                  <th>Rule %</th>
+                  <th>Base Share</th>
+                  <th>Attendance</th>
+                  <th>Final Share</th>
+                  <th>Override</th>
+                  <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredResults.map(r => (
+                  <tr key={r.id}>
+                    <td className="font-medium text-white">
+                      <span className="font-mono text-slate-400 text-xs mr-2">{r.staff?.staff_code}</span>
+                      {r.staff?.name}
+                    </td>
+                    <td>{r.departments?.name}</td>
+                    <td><span className="badge badge-info">{r.share_rules?.role_name}</span></td>
+                    <td>₹{Number(r.department_income).toLocaleString('en-IN')}</td>
+                    <td>{r.rule_percentage}%</td>
+                    <td>₹{Number(r.base_share).toLocaleString('en-IN')}</td>
+                    <td>
+                      <span className={`badge ${Number(r.attendance_ratio) >= 0.8 ? 'badge-success' : 'badge-warning'}`}>
+                        {(Number(r.attendance_ratio) * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="font-bold text-emerald-400">₹{Number(r.manual_override ?? r.final_share).toLocaleString('en-IN')}</td>
+                    <td>
+                      {r.manual_override != null ? (
+                        <span className="badge badge-warning" title={r.override_reason || ''}>Overridden</span>
+                      ) : <span className="text-slate-600">—</span>}
+                    </td>
+                    <td>
+                      <div className="flex justify-end">
+                        <button className="btn-secondary btn-sm" onClick={() => {
+                          setOverrideResult(r);
+                          setOverrideAmount(String(r.manual_override ?? r.final_share));
+                          setOverrideReason(r.override_reason || '');
+                        }} disabled={r.is_locked}>
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="lg:hidden flex flex-col gap-4">
+            {filteredResults.map(r => (
+              <div key={r.id} className="glass-card p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
+                  <div>
+                    <div className="font-medium text-white text-lg">{r.staff?.name}</div>
+                    <div className="font-mono text-slate-400 text-xs mt-1">{r.staff?.staff_code} &bull; {r.departments?.name}</div>
+                  </div>
+                  <button className="btn-secondary btn-sm" onClick={() => {
+                    setOverrideResult(r);
+                    setOverrideAmount(String(r.manual_override ?? r.final_share));
+                    setOverrideReason(r.override_reason || '');
+                  }} disabled={r.is_locked}>
+                    <Edit3 size={14} /> Override
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm py-1">
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Role</span>
+                    <span className="badge badge-info">{r.share_rules?.role_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Final Share</span>
+                    <span className="font-bold text-emerald-400">₹{Number(r.manual_override ?? r.final_share).toLocaleString('en-IN')}</span>
+                    {r.manual_override != null && <span className="badge badge-warning ml-2 scale-75 origin-left">OR</span>}
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Rule / Att %</span>
+                    <span className="text-slate-300">{r.rule_percentage}% / {(Number(r.attendance_ratio) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Base Share</span>
+                    <span className="text-slate-300">₹{Number(r.base_share).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         /* ──────── DEPARTMENT VIEW ──────── */
-        <div className="glass-card table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th>Monthly Income</th>
-                <th>Total Shares</th>
-                <th>Staff Count</th>
-                <th>Share % of Income</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from(deptSummary.values()).map(d => (
-                <tr key={d.name}>
-                  <td className="font-medium text-white">{d.name}</td>
-                  <td>₹{d.income.toLocaleString('en-IN')}</td>
-                  <td className="font-bold text-emerald-400">₹{Math.round(d.totalShares).toLocaleString('en-IN')}</td>
-                  <td>{d.count}</td>
-                  <td>
+        <>
+          <div className="glass-card table-container hidden md:block">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Monthly Income</th>
+                  <th>Total Shares</th>
+                  <th>Staff Count</th>
+                  <th>Share % of Income</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(deptSummary.values()).map(d => (
+                  <tr key={d.name}>
+                    <td className="font-medium text-white">{d.name}</td>
+                    <td>₹{d.income.toLocaleString('en-IN')}</td>
+                    <td className="font-bold text-emerald-400">₹{Math.round(d.totalShares).toLocaleString('en-IN')}</td>
+                    <td>{d.count}</td>
+                    <td>
+                      <span className="badge badge-info">
+                        {d.income > 0 ? ((d.totalShares / d.income) * 100).toFixed(2) : 0}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden flex flex-col gap-4">
+            {Array.from(deptSummary.values()).map(d => (
+              <div key={d.name} className="glass-card p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
+                  <div>
+                    <div className="font-medium text-white text-lg">{d.name}</div>
+                    <div className="text-sm text-slate-400 mt-1">{d.count} Staff Members</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Total Shares</div>
+                    <div className="font-bold text-emerald-400 text-lg">₹{Math.round(d.totalShares).toLocaleString('en-IN')}</div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-sm pt-1">
+                  <div>
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Dept Income</span>
+                    <span className="text-slate-300">₹{d.income.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 text-xs block mb-1 font-semibold uppercase">Share %</span>
                     <span className="badge badge-info">
                       {d.income > 0 ? ((d.totalShares / d.income) * 100).toFixed(2) : 0}%
                     </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Override Modal */}

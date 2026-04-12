@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
   Building2,
-  Settings2,
   Users,
-  CalendarCheck,
-  Calculator,
+  Settings2,
+  CalendarPlus,
+  CalendarOff,
   FileBarChart,
+  LayoutDashboard,
   LogOut,
   Menu,
   X,
@@ -20,12 +20,12 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/', label: 'Overview', icon: LayoutDashboard }, 
   { href: '/departments', label: 'Departments', icon: Building2 },
-  { href: '/rules', label: 'Share Rules', icon: Settings2 },
   { href: '/staff', label: 'Staff', icon: Users },
-  { href: '/attendance', label: 'Attendance', icon: CalendarCheck },
-  { href: '/calculate', label: 'Calculate', icon: Calculator },
+  { href: '/attendance', label: 'Attendance', icon: CalendarOff },
+  { href: '/rules', label: 'Rules', icon: Settings2 },
+  { href: '/monthly-entry', label: 'Monthly Entry', icon: CalendarPlus },
   { href: '/reports', label: 'Reports', icon: FileBarChart },
 ];
 
@@ -90,10 +90,9 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-tight">HospitalShare</h1>
-            <p className="text-xs text-slate-500">Incentive Manager</p>
+            <p className="text-xs text-slate-500">Daily Engine</p>
           </div>
 
-          {/* Close button for mobile */}
           <button
             onClick={() => setIsOpen(false)}
             className="ml-auto lg:hidden text-slate-400 hover:text-white"

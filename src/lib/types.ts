@@ -1,196 +1,136 @@
 // ============================================
-// Database Types
+// Hospital Share v2 — Daily-Based System Types
 // ============================================
+
+// --- Database Models ---
 
 export interface Department {
   id: string;
   name: string;
-  type: 'clinical' | 'non_clinical';
   is_active: boolean;
+  is_sub_department: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export interface ShareRule {
-  id: string;
-  department_id: string;
-  role_name: string;
-  share_percentage: number;
-  share_type: 'fixed' | 'group';
-  distribution_type: 'per_person' | 'pool';
-  absent_handling: 'exclude' | 'include';
-  effective_from: string | null;
-  effective_to: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  departments?: Department;
 }
 
 export interface Staff {
   id: string;
-  staff_code: string;
   name: string;
   department_id: string;
-  share_rule_id: string;
+  role: string;
+  is_active: boolean;
+  staff_code?: string;
+  created_at: string;
+  updated_at: string;
+  departments?: Department;
+}
+
+export interface DepartmentRule {
+  id: string;
+  department_id: string;
+  role: string;
+  percentage: string; // Plain number: "3", "10", "0.5"
+  distribution_type: 'individual' | 'group';
   is_active: boolean;
   created_at: string;
   updated_at: string;
   departments?: Department;
-  share_rules?: ShareRule;
 }
 
-export interface MonthlyIncome {
+export interface DailyIncome {
   id: string;
   department_id: string;
-  year: number;
-  month: number;
-  income_amount: number;
-  is_locked: boolean;
-  created_at: string;
-  departments?: Department;
-}
-
-export interface Attendance {
-  id: string;
-  staff_id: string;
-  year: number;
-  month: number;
-  total_days: number;
-  worked_days: number;
-  paid_leaves: number;
-  unpaid_leaves: number;
-  half_days: number;
+  date: string;
+  amount: number;
+  present_staff_ids?: string[] | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface MonthlyAttendanceStatus {
+  id: string;
+  department_id: string;
+  month: string;
+  is_reviewed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LeaveType = 'OFF' | 'CL';
+
+export interface StaffLeave {
+  id: string;
+  staff_id: string;
+  department_id: string;
+  date: string;
+  leave_type: LeaveType;
+  created_at: string;
   staff?: Staff;
 }
 
-export interface MonthlyResult {
+export interface StaffWorkEntry {
   id: string;
   staff_id: string;
   department_id: string;
-  share_rule_id: string;
-  year: number;
-  month: number;
-  department_income: number;
-  rule_percentage: number;
-  distribution_type: string;
-  share_pool: number;
-  staff_in_pool: number;
-  base_share: number;
-  effective_worked_days: number;
-  total_days: number;
-  attendance_ratio: number;
+  date: string;
+  description: string;
+  amount: number;
+  percentage: string; // Plain number: "40", "10"
+  created_at: string;
+  staff?: Staff;
+}
+
+export interface DailyResult {
+  id: string;
+  staff_id: string;
+  department_id: string;
+  date: string;
+  income_amount: number;
+  calculation_type: 'rule' | 'work_entry';
+  rule_percentage: string | null;
+  distribution_type: string | null;
+  pool_amount: number;
+  present_count: number;
   final_share: number;
-  manual_override: number | null;
-  override_reason: string | null;
-  is_locked: boolean;
+  breakdown: unknown;
   calculated_at: string;
   staff?: Staff;
   departments?: Department;
-  share_rules?: ShareRule;
 }
 
-export interface AuditLog {
-  id: string;
-  table_name: string;
-  record_id: string | null;
-  action: string;
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
-  performed_by: string | null;
-  created_at: string;
-}
-
-// ============================================
-// Form Types
-// ============================================
+// --- Form Types ---
 
 export interface DepartmentForm {
   name: string;
-  type: 'clinical' | 'non_clinical';
   is_active: boolean;
-}
-
-export interface ShareRuleForm {
-  department_id: string;
-  role_name: string;
-  share_percentage: number;
-  share_type: 'fixed' | 'group';
-  distribution_type: 'per_person' | 'pool';
-  absent_handling: 'exclude' | 'include';
-  effective_from: string;
-  effective_to: string;
-  is_active: boolean;
+  is_sub_department: boolean;
 }
 
 export interface StaffForm {
-  staff_code: string;
   name: string;
   department_id: string;
-  share_rule_id: string;
+  role: string;
   is_active: boolean;
 }
 
-export interface AttendanceForm {
-  staff_id: string;
-  year: number;
-  month: number;
-  total_days: number;
-  worked_days: number;
-  paid_leaves: number;
-  unpaid_leaves: number;
-  half_days: number;
-}
-
-export interface MonthlyIncomeForm {
+export interface DepartmentRuleForm {
   department_id: string;
-  year: number;
-  month: number;
-  income_amount: number;
+  role: string;
+  percentage: string;
+  distribution_type: 'individual' | 'group';
+  is_active: boolean;
 }
 
-// ============================================
-// Calculation Types
-// ============================================
-
-export interface CalculationPreview {
+export interface WorkEntryForm {
   staff_id: string;
-  staff_name: string;
-  department_name: string;
-  role_name: string;
-  distribution_type: string;
-  department_income: number;
-  rule_percentage: number;
-  share_pool: number;
-  staff_in_pool: number;
-  base_share: number;
-  effective_worked_days: number;
-  total_days: number;
-  attendance_ratio: number;
-  final_share: number;
+  department_id: string;
+  date: string;
+  description: string;
+  amount: number;
+  percentage: string;
 }
 
-export interface ValidationError {
-  type: 'error' | 'warning';
-  message: string;
-  department?: string;
-}
-
-// ============================================
-// UI Types
-// ============================================
-
-export interface MonthYear {
-  year: number;
-  month: number;
-}
-
-export const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-] as const;
+// --- UI Types ---
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -200,29 +140,7 @@ export interface Toast {
   message: string;
 }
 
-// ============================================
-// Aggregated Report Types
-// ============================================
-
-export interface BreakdownItem {
-  department_id: string;
-  department_name: string;
-  role_name: string;
-  amount: number;
-  percentage: number;
-  base_share: number;
-  attendance_ratio: number;
-  department_income: number;
-  rule_percentage: number;
-  has_override: boolean;
-  result_id: string;
-}
-
-export interface AggregatedStaffResult {
-  staff_id: string;
-  staff_code: string;
-  staff_name: string;
-  total_share: number;
-  department_count: number;
-  breakdown: BreakdownItem[];
-}
+export const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+] as const;

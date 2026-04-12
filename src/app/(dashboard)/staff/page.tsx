@@ -1,171 +1,157 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
+import { Plus, Users, Pencil, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Staff, StaffForm, Department, ShareRule } from '@/lib/types';
-import { Plus, Edit2, Trash2, Users } from 'lucide-react';
+import type { Department, Staff, StaffForm } from '@/lib/types';
 
 export default function StaffPage() {
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [rules, setRules] = useState<ShareRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Staff | null>(null);
-  const [form, setForm] = useState<StaffForm>({ staff_code: '', name: '', department_id: '', share_rule_id: '', is_active: true });
-  const [saving, setSaving] = useState(false);
-  const [generatingCode, setGeneratingCode] = useState(false);
-  const [filterDept, setFilterDept] = useState('');
   const { addToast } = useToast();
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterDept, setFilterDept] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', role: '', is_active: true });
 
-  const load = async () => {
-    const supabase = createClient();
-    const [staffRes, deptsRes, rulesRes] = await Promise.all([
-      supabase.from('staff').select('*, departments(name), share_rules(role_name)').order('name'),
-      supabase.from('departments').select('*').eq('is_active', true).order('name'),
-      supabase.from('share_rules').select('*').eq('is_active', true).order('role_name'),
-    ]);
-    setStaffList(staffRes.data || []);
-    setDepartments(deptsRes.data || []);
-    setRules(rulesRes.data || []);
+  const fetchDepartments = async () => {
+    const res = await fetch('/api/departments');
+    const data = await res.json();
+    setDepartments(data);
+    if (data.length > 0 && !filterDept) setFilterDept(data[0].id);
+  };
+
+  const fetchStaff = async () => {
+    setLoading(true);
+    const url = filterDept ? `/api/staff?department_id=${filterDept}` : '/api/staff';
+    const res = await fetch(url);
+    const data = await res.json();
+    setStaff(data);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
-
-  const filteredRules = form.department_id ? rules.filter(r => r.department_id === form.department_id) : [];
-  const filteredStaff = filterDept ? staffList.filter(s => s.department_id === filterDept) : staffList;
+  useEffect(() => { fetchDepartments(); }, []);
+  useEffect(() => { if (filterDept) fetchStaff(); }, [filterDept]);
 
   const openAdd = () => {
-    setEditing(null);
-    setForm({ staff_code: '', name: '', department_id: filterDept || '', share_rule_id: '', is_active: true });
+    setEditingId(null);
+    setForm({ name: '', department_id: filterDept, role: '', is_active: true });
     setShowModal(true);
   };
 
   const openEdit = (s: Staff) => {
-    setEditing(s);
-    setForm({ staff_code: s.staff_code, name: s.name, department_id: s.department_id, share_rule_id: s.share_rule_id, is_active: s.is_active });
+    setEditingId(s.id);
+    setForm({ name: s.name, department_id: s.department_id, role: s.role, is_active: s.is_active });
     setShowModal(true);
   };
 
-  const handleGenerateCode = async () => {
-    if (!form.share_rule_id) {
-       addToast('error', 'Please select a Role first to determine the code prefix.');
-       return;
-    }
-    const rule = rules.find(r => r.id === form.share_rule_id);
-    if (!rule) return;
-    
-    setGeneratingCode(true);
-    try {
-      const res = await fetch(`/api/staff/generate-code?role=${encodeURIComponent(rule.role_name)}`);
-      const data = await res.json();
-      if (data.error) addToast('error', data.error);
-      else setForm({ ...form, staff_code: data.code });
-    } catch {
-      addToast('error', 'Failed to generate code.');
-    }
-    setGeneratingCode(false);
-  };
-
   const handleSave = async () => {
-    if (!form.staff_code.trim() || !form.name.trim() || !form.department_id || !form.share_rule_id) {
-      addToast('error', 'Fill all required fields including Staff Code.'); return;
+    if (!form.name.trim()) { addToast('error', 'Name required'); return; }
+    if (!form.department_id) { addToast('error', 'Department required'); return; }
+    if (!form.role.trim()) { addToast('error', 'Role required'); return; }
+
+    const method = editingId ? 'PUT' : 'POST';
+    const url = editingId ? `/api/staff/${editingId}` : '/api/staff';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      addToast('error', err.error || 'Failed to save');
+      return;
     }
-    setSaving(true);
-    const supabase = createClient();
 
-    if (editing) {
-      const { error } = await supabase.from('staff').update(form).eq('id', editing.id);
-      if (error) { 
-        if (error.code === '23505') addToast('error', 'This staff member is already assigned to this role in this department.');
-        else addToast('error', error.message); 
-        setSaving(false); return; 
-      }
-      addToast('success', 'Staff updated.');
-    } else {
-      const { error } = await supabase.from('staff').insert(form);
-      if (error) { 
-        if (error.code === '23505') addToast('error', 'This staff member is already assigned to this role in this department.');
-        else addToast('error', error.message); 
-        setSaving(false); return; 
-      }
-      addToast('success', 'Staff added.');
-    }
-    setShowModal(false); setSaving(false); load();
+    addToast('success', editingId ? 'Staff updated' : 'Staff added');
+    setShowModal(false);
+    fetchStaff();
   };
 
-  const handleDelete = async (s: Staff) => {
-    if (!confirm(`Remove "${s.name}"?`)) return;
-    const supabase = createClient();
-    const { error } = await supabase.from('staff').delete().eq('id', s.id);
-    if (error) { addToast('error', error.message); return; }
-    addToast('success', 'Staff removed.'); load();
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this staff member?')) return;
+    const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+    if (!res.ok) { addToast('error', 'Failed to delete'); return; }
+    addToast('success', 'Staff deleted');
+    fetchStaff();
   };
 
-  const toggleActive = async (s: Staff) => {
-    const supabase = createClient();
-    await supabase.from('staff').update({ is_active: !s.is_active }).eq('id', s.id);
-    load();
-  };
+  const deptName = departments.find((d) => d.id === filterDept)?.name || '';
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="spinner" style={{ width: 40, height: 40, borderWidth: 4 }} /></div>;
+  // Get unique roles for quick-add suggestions
+  const existingRoles = [...new Set(staff.map((s) => s.role))];
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Staff Management</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage hospital staff and role assignments</p>
+          <h1 className="page-title">Staff</h1>
+          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
+            {deptName ? `${deptName} — ` : ''}
+            {staff.length} member{staff.length !== 1 ? 's' : ''}
+          </p>
         </div>
-        <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add Staff</button>
+        <button className="btn-primary" onClick={openAdd}>
+          <Plus size={16} /> Add Staff
+        </button>
       </div>
 
-      <div className="mb-5" style={{ maxWidth: 300 }}>
-        <select className="select-field" value={filterDept} onChange={(e) => setFilterDept(e.target.value)}>
-          <option value="">All Departments</option>
-          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+      {/* Department Filter */}
+      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
+        <label className="form-label">Department</label>
+        <select
+          className="select-field"
+          value={filterDept}
+          onChange={(e) => setFilterDept(e.target.value)}
+        >
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
         </select>
       </div>
 
-      {filteredStaff.length === 0 ? (
+      {loading ? (
+        <div className="empty-state"><div className="spinner" style={{ margin: '0 auto' }} /></div>
+      ) : staff.length === 0 ? (
         <div className="glass-card empty-state">
-          <Users size={48} className="mx-auto mb-4 text-slate-600" />
-          <p className="text-lg font-medium text-slate-400">No staff members yet</p>
-          <p className="text-sm text-slate-500 mt-1">Add staff and assign them to departments & roles.</p>
+          <Users size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+          <p style={{ fontSize: '16px', fontWeight: 500 }}>No staff in this department</p>
         </div>
       ) : (
-        <>
-          {/* Desktop Table */}
-          <div className="glass-card table-container hidden md:block">
+        <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Code</th>
                   <th>Name</th>
-                  <th>Department</th>
                   <th>Role</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredStaff.map((s) => (
+                {staff.map((s) => (
                   <tr key={s.id}>
-                    <td className="font-mono text-slate-300">{s.staff_code}</td>
-                    <td className="font-medium text-white">{s.name}</td>
-                    <td>{s.departments?.name}</td>
-                    <td><span className="badge badge-info">{s.share_rules?.role_name}</span></td>
+                    <td style={{ fontWeight: 600 }}>{s.name}</td>
                     <td>
-                      <button onClick={() => toggleActive(s)}>
-                        <div className={`toggle-switch ${s.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
-                      </button>
+                      <span className="badge badge-info">{s.role}</span>
                     </td>
                     <td>
-                      <div className="flex gap-2 justify-end">
-                        <button className="btn-secondary btn-sm" onClick={() => openEdit(s)}><Edit2 size={14} /></button>
-                        <button className="btn-danger btn-sm" onClick={() => handleDelete(s)}><Trash2 size={14} /></button>
+                      <span className={s.is_active ? 'badge badge-success' : 'badge badge-danger'}>
+                        {s.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: '6px' }}>
+                        <button className="btn-secondary btn-sm" onClick={() => openEdit(s)}>
+                          <Pencil size={14} />
+                        </button>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(s.id)}>
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -173,99 +159,78 @@ export default function StaffPage() {
               </tbody>
             </table>
           </div>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden flex flex-col gap-4">
-            {filteredStaff.map((s) => (
-              <div key={s.id} className="glass-card p-4 flex flex-col gap-3">
-                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
-                  <div>
-                    <div className="font-medium text-white text-lg">{s.name}</div>
-                    <div className="text-sm font-mono text-slate-400 mt-1">{s.staff_code}</div>
-                  </div>
-                  <button onClick={() => toggleActive(s)}>
-                    <div className={`toggle-switch ${s.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 text-sm py-1">
-                  <div>
-                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Dept</span>
-                    <span className="text-slate-300">{s.departments?.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Role</span>
-                    <span className="badge badge-info">{s.share_rules?.role_name}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50 mt-1">
-                  <button className="btn-secondary flex-1 justify-center" onClick={() => openEdit(s)}>
-                    <Edit2 size={16} /> Edit
-                  </button>
-                  <button className="btn-danger flex-1 justify-center" onClick={() => handleDelete(s)}>
-                    <Trash2 size={16} /> Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+        </div>
       )}
 
+      {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-semibold text-white mb-5">{editing ? 'Edit Staff' : 'Add Staff'}</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700 }}>
+                {editingId ? 'Edit Staff' : 'Add Staff'}
+              </h2>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Name</label>
+              <input
+                className="input-field"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Dr. Ahmed, Nurse Fatima..."
+                autoFocus
+              />
+            </div>
 
             <div className="form-group">
               <label className="form-label">Department</label>
-              <select className="select-field" value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value, share_rule_id: '' })}>
-                <option value="">Select department</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              <select
+                className="select-field"
+                value={form.department_id}
+                onChange={(e) => setForm({ ...form, department_id: e.target.value })}
+              >
+                <option value="">Select...</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Role (Share Rule)</label>
-              <select className="select-field" value={form.share_rule_id} onChange={(e) => setForm({ ...form, share_rule_id: e.target.value })}>
-                <option value="">Select role</option>
-                {filteredRules.map(r => <option key={r.id} value={r.id}>{r.role_name} ({r.share_percentage}% — {r.distribution_type})</option>)}
-              </select>
-              {form.department_id && filteredRules.length === 0 && (
-                <p className="text-xs text-amber-400 mt-1">No rules defined for this department. Create rules first.</p>
-              )}
+              <label className="form-label">Role</label>
+              <input
+                className="input-field"
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                placeholder="Doctor, Nurse, Technician..."
+                list="role-suggestions"
+              />
+              <datalist id="role-suggestions">
+                {existingRoles.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Staff Code</label>
-              <div className="flex gap-2">
-                <input className="input-field font-mono" placeholder="e.g. DOC-001" value={form.staff_code} onChange={(e) => setForm({ ...form, staff_code: e.target.value.toUpperCase() })} />
-                <button className="btn-secondary" style={{ whiteSpace: 'nowrap' }} onClick={handleGenerateCode} disabled={generatingCode || !form.share_rule_id}>
-                  {generatingCode ? '...' : 'Generate Code'}
-                </button>
+              <label className="form-label">Active</label>
+              <div
+                className={`toggle-switch ${form.is_active ? 'active' : 'inactive'}`}
+                onClick={() => setForm({ ...form, is_active: !form.is_active })}
+              >
+                <div className="toggle-knob" />
               </div>
-              {!form.share_rule_id && <p className="text-xs text-slate-500 mt-1">Select a Role first to automatically generate code.</p>}
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Full Name</label>
-              <input className="input-field" placeholder="Staff name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <button onClick={() => setForm({ ...form, is_active: !form.is_active })}>
-                <div className={`toggle-switch ${form.is_active ? 'active' : 'inactive'}`}><div className="toggle-knob" /></div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn-primary" onClick={handleSave}>
+                {editingId ? 'Update' : 'Add'}
               </button>
-              <span className="text-sm text-slate-400 ml-3">{form.is_active ? 'Active' : 'Inactive'}</span>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button className="btn-primary flex-1 justify-center" onClick={handleSave} disabled={saving}>
-                {saving ? <><div className="spinner" /> Saving...</> : 'Save'}
-              </button>
-              <button className="btn-secondary flex-1 justify-center" onClick={() => setShowModal(false)}>Cancel</button>
             </div>
           </div>
         </div>

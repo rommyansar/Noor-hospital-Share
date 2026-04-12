@@ -1,135 +1,141 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
+import { Plus, Building2, Pencil, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department, DepartmentForm } from '@/lib/types';
-import { Plus, Edit2, Trash2, Building2 } from 'lucide-react';
 
 export default function DepartmentsPage() {
+  const { addToast } = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Department | null>(null);
-  const [form, setForm] = useState<DepartmentForm>({ name: '', type: 'clinical', is_active: true });
-  const [saving, setSaving] = useState(false);
-  const { addToast } = useToast();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<DepartmentForm>({ name: '', is_active: true, is_sub_department: false });
 
-  const loadDepartments = async () => {
-    const supabase = createClient();
-    const { data } = await supabase.from('departments').select('*').order('name');
-    setDepartments(data || []);
+  const fetchDepartments = async () => {
+    const res = await fetch('/api/departments');
+    const data = await res.json();
+    setDepartments(data);
     setLoading(false);
   };
 
-  useEffect(() => { loadDepartments(); }, []);
+  useEffect(() => { fetchDepartments(); }, []);
 
   const openAdd = () => {
-    setEditing(null);
-    setForm({ name: '', type: 'clinical', is_active: true });
+    setEditingId(null);
+    setForm({ name: '', is_active: true, is_sub_department: false });
     setShowModal(true);
   };
 
   const openEdit = (dept: Department) => {
-    setEditing(dept);
-    setForm({ name: dept.name, type: dept.type, is_active: dept.is_active });
+    setEditingId(dept.id);
+    setForm({ name: dept.name, is_active: dept.is_active, is_sub_department: dept.is_sub_department || false });
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) { addToast('error', 'Department name is required.'); return; }
-    setSaving(true);
-    const supabase = createClient();
+    if (!form.name.trim()) { addToast('error', 'Name is required'); return; }
+    const method = editingId ? 'PUT' : 'POST';
+    const url = editingId ? `/api/departments/${editingId}` : '/api/departments';
 
-    if (editing) {
-      const { error } = await supabase.from('departments').update(form).eq('id', editing.id);
-      if (error) { addToast('error', error.message); setSaving(false); return; }
-      addToast('success', 'Department updated.');
-    } else {
-      const { error } = await supabase.from('departments').insert(form);
-      if (error) { addToast('error', error.message); setSaving(false); return; }
-      addToast('success', 'Department created.');
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      addToast('error', err.error || 'Failed to save');
+      return;
     }
 
+    addToast('success', editingId ? 'Department updated' : 'Department created');
     setShowModal(false);
-    setSaving(false);
-    loadDepartments();
+    fetchDepartments();
   };
 
-  const handleDelete = async (dept: Department) => {
-    if (!confirm(`Delete "${dept.name}"? This will also delete all related rules, staff, and data.`)) return;
-    const supabase = createClient();
-    const { error } = await supabase.from('departments').delete().eq('id', dept.id);
-    if (error) { addToast('error', error.message); return; }
-    addToast('success', 'Department deleted.');
-    loadDepartments();
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this department? All related data will be lost.')) return;
+    const res = await fetch(`/api/departments/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      addToast('error', 'Failed to delete');
+      return;
+    }
+    addToast('success', 'Department deleted');
+    fetchDepartments();
   };
-
-  const toggleActive = async (dept: Department) => {
-    const supabase = createClient();
-    await supabase.from('departments').update({ is_active: !dept.is_active }).eq('id', dept.id);
-    loadDepartments();
-  };
-
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh]"><div className="spinner" style={{ width: 40, height: 40, borderWidth: 4 }} /></div>;
-  }
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title">Departments</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage hospital departments</p>
+          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
+            Manage hospital departments
+          </p>
         </div>
         <button className="btn-primary" onClick={openAdd}>
           <Plus size={16} /> Add Department
         </button>
       </div>
 
-      {departments.length === 0 ? (
+      {loading ? (
+        <div className="empty-state"><div className="spinner" style={{ margin: '0 auto' }} /></div>
+      ) : departments.length === 0 ? (
         <div className="glass-card empty-state">
-          <Building2 size={48} className="mx-auto mb-4 text-slate-600" />
-          <p className="text-lg font-medium text-slate-400">No departments yet</p>
-          <p className="text-sm text-slate-500 mt-1">Create your first department to get started.</p>
+          <Building2 size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+          <p style={{ fontSize: '16px', fontWeight: 500 }}>No departments yet</p>
+          <p style={{ fontSize: '14px', marginTop: '8px' }}>Add your first department to get started</p>
         </div>
       ) : (
-        <>
-          {/* Desktop Table */}
-          <div className="glass-card table-container hidden md:block">
+        <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Type</th>
                   <th>Status</th>
-                  <th>Created</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {departments.map((dept) => (
-                  <tr key={dept.id}>
-                    <td className="font-medium text-white">{dept.name}</td>
+                {departments.map((d) => (
+                  <tr key={d.id}>
                     <td>
-                      <span className={`badge ${dept.type === 'clinical' ? 'badge-info' : 'badge-warning'}`}>
-                        {dept.type === 'clinical' ? 'Clinical' : 'Non-Clinical'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '32px', height: '32px', borderRadius: '10px',
+                          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.1))',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Building2 size={16} style={{ color: '#34d399' }} />
+                        </div>
+                        <span style={{ fontWeight: 600 }}>{d.name}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-md border ${
+                        d.is_sub_department 
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                          : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                      }`}>
+                        {d.is_sub_department ? 'Sub-Department' : 'Primary'}
                       </span>
                     </td>
                     <td>
-                      <button onClick={() => toggleActive(dept)}>
-                        <div className={`toggle-switch ${dept.is_active ? 'active' : 'inactive'}`}>
-                          <div className="toggle-knob" />
-                        </div>
-                      </button>
+                      <span className={d.is_active ? 'badge badge-success' : 'badge badge-danger'}>
+                        {d.is_active ? 'Active' : 'Inactive'}
+                      </span>
                     </td>
-                    <td className="text-slate-400">{new Date(dept.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <div className="flex gap-2 justify-end">
-                        <button className="btn-secondary btn-sm" onClick={() => openEdit(dept)}>
-                          <Edit2 size={14} />
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: '6px' }}>
+                        <button className="btn-secondary btn-sm" onClick={() => openEdit(d)}>
+                          <Pencil size={14} />
                         </button>
-                        <button className="btn-danger btn-sm" onClick={() => handleDelete(dept)}>
+                        <button className="btn-danger btn-sm" onClick={() => handleDelete(d.id)}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -139,78 +145,63 @@ export default function DepartmentsPage() {
               </tbody>
             </table>
           </div>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden flex flex-col gap-4">
-            {departments.map((dept) => (
-              <div key={dept.id} className="glass-card p-4 flex flex-col gap-3 relative">
-                <div className="flex justify-between items-start border-b border-slate-700/50 pb-3">
-                  <div>
-                    <div className="font-medium text-white text-lg">{dept.name}</div>
-                    <div className="text-sm text-slate-400 mt-1">Created: {new Date(dept.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <button onClick={() => toggleActive(dept)}>
-                    <div className={`toggle-switch ${dept.is_active ? 'active' : 'inactive'}`}>
-                      <div className="toggle-knob" />
-                    </div>
-                  </button>
-                </div>
-
-                <div className="py-1">
-                   <span className="text-slate-500 text-xs block mb-1 uppercase tracking-wider font-semibold">Type</span>
-                   <span className={`badge ${dept.type === 'clinical' ? 'badge-info' : 'badge-warning'}`}>
-                     {dept.type === 'clinical' ? 'Clinical' : 'Non-Clinical'}
-                   </span>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50 mt-1">
-                  <button className="btn-secondary flex-1 justify-center" onClick={() => openEdit(dept)}>
-                    <Edit2 size={16} /> Edit
-                  </button>
-                  <button className="btn-danger flex-1 justify-center" onClick={() => handleDelete(dept)}>
-                    <Trash2 size={16} /> Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+        </div>
       )}
 
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-semibold text-white mb-5">{editing ? 'Edit Department' : 'Add Department'}</h2>
-
-            <div className="form-group">
-              <label className="form-label">Department Name</label>
-              <input className="input-field" placeholder="e.g. Cardiology" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700 }}>
+                {editingId ? 'Edit Department' : 'Add Department'}
+              </h2>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Type</label>
-              <select className="select-field" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as 'clinical' | 'non_clinical' })}>
-                <option value="clinical">Clinical</option>
-                <option value="non_clinical">Non-Clinical</option>
-              </select>
+              <label className="form-label">Department Name</label>
+              <input
+                className="input-field"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. OT, OPD, Lab..."
+                autoFocus
+              />
             </div>
 
             <div className="form-group">
               <label className="form-label">Status</label>
-              <button onClick={() => setForm({ ...form, is_active: !form.is_active })}>
-                <div className={`toggle-switch ${form.is_active ? 'active' : 'inactive'}`}>
-                  <div className="toggle-knob" />
-                </div>
-              </button>
-              <span className="text-sm text-slate-400 ml-3">{form.is_active ? 'Active' : 'Inactive'}</span>
+              <div
+                className={`toggle-switch ${form.is_active ? 'active' : 'inactive'}`}
+                onClick={() => setForm({ ...form, is_active: !form.is_active })}
+              >
+                <div className="toggle-knob" />
+              </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button className="btn-primary flex-1 justify-center" onClick={handleSave} disabled={saving}>
-                {saving ? <><div className="spinner" /> Saving...</> : 'Save'}
+            <div className="form-group pb-2">
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <label className="form-label mb-0" style={{ marginBottom: 0 }}>Is Global Sub-Department?</label>
+                  <p className="text-xs text-slate-400 mt-1">If enabled, this department receives shares cross-departmentally via manual entries.</p>
+                </div>
+                <div
+                  className={`toggle-switch ${form.is_sub_department ? 'active' : 'inactive'}`}
+                  onClick={() => setForm({ ...form, is_sub_department: !form.is_sub_department })}
+                >
+                  <div className="toggle-knob" />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn-primary" onClick={handleSave}>
+                {editingId ? 'Update' : 'Create'}
               </button>
-              <button className="btn-secondary flex-1 justify-center" onClick={() => setShowModal(false)}>Cancel</button>
             </div>
           </div>
         </div>

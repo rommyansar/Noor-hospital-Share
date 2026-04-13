@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShieldCheck, ShieldAlert, Save } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Department, Staff, StaffLeave, LeaveType } from '@/lib/types';
+import type { Staff, StaffLeave, LeaveType } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
 
 function getDaysInMonth(year: number, month: number): number {
@@ -15,8 +15,6 @@ type PendingChanges = Map<string, LeaveType | null>;
 
 export default function AttendancePage() {
   const { addToast } = useToast();
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [selectedDept, setSelectedDept] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -25,40 +23,34 @@ export default function AttendancePage() {
   const [saving, setSaving] = useState(false);
   const [isReviewed, setIsReviewed] = useState(false);
 
-  // Batch pending changes: tracks only what the user has changed since last save/load
+  // Batch pending changes
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>(new Map());
 
   const totalDays = getDaysInMonth(year, month);
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
 
-  const fetchDepartments = async () => {
-    const res = await fetch('/api/departments');
-    const data = await res.json();
-    setDepartments(data.filter((d: Department) => d.is_active));
-  };
-
   const loadData = useCallback(async () => {
-    if (!selectedDept) return;
     setLoading(true);
 
-    const staffRes = await fetch(`/api/staff?department_id=${selectedDept}`);
+    // Fetch ALL active staff (global)
+    const staffRes = await fetch('/api/staff');
     const staffData = await staffRes.json();
     setStaffList(staffData.filter((s: Staff) => s.is_active));
 
-    const lvRes = await fetch(`/api/leaves?department_id=${selectedDept}&month=${monthStr}`);
+    // Fetch ALL leaves for this month (global — no department_id)
+    const lvRes = await fetch(`/api/leaves?month=${monthStr}`);
     const lvData = await lvRes.json();
     setLeaves(lvData);
 
-    const statusRes = await fetch(`/api/monthly-status?department_id=${selectedDept}&month=${monthStr}`);
+    // Fetch global review status for this month
+    const statusRes = await fetch(`/api/monthly-status?month=${monthStr}`);
     const statusData = await statusRes.json();
     setIsReviewed(statusData.is_reviewed || false);
 
-    // Clear pending changes after a fresh load
     setPendingChanges(new Map());
     setLoading(false);
-  }, [selectedDept, monthStr]);
+  }, [monthStr]);
 
-  useEffect(() => { fetchDepartments(); }, []);
   useEffect(() => { loadData(); }, [loadData]);
 
   const toggleReviewed = async () => {
@@ -67,7 +59,6 @@ export default function AttendancePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        department_id: selectedDept,
         month: monthStr,
         is_reviewed: nextVal
       }),
@@ -90,7 +81,7 @@ export default function AttendancePage() {
     return map;
   }, [leaves]);
 
-  // Get the effective leave value for a cell, considering pending changes
+  // Get the effective leave value for a cell
   const getEffectiveValue = (staffId: string, dateStr: string): string => {
     const key = `${dateStr}|${staffId}`;
     if (pendingChanges.has(key)) {
@@ -101,16 +92,12 @@ export default function AttendancePage() {
     return lv?.leave_type || '';
   };
 
-  // Check if a cell has been changed from its saved state
   const isCellDirty = (staffId: string, dateStr: string): boolean => {
     return pendingChanges.has(`${dateStr}|${staffId}`);
   };
 
-  // Handle local-only change (no network call)
   const handleLocalChange = (staffId: string, dateStr: string, nextType: string) => {
     const key = `${dateStr}|${staffId}`;
-    
-    // Check if this change matches the original saved value
     const dateLeaves = leavesByDate.get(dateStr) || [];
     const originalLv = dateLeaves.find(l => l.staff_id === staffId);
     const originalVal = originalLv?.leave_type || '';
@@ -118,7 +105,6 @@ export default function AttendancePage() {
     setPendingChanges(prev => {
       const next = new Map(prev);
       if (nextType === originalVal) {
-        // User reverted to original value, remove from pending
         next.delete(key);
       } else {
         next.set(key, nextType === '' ? null : nextType as LeaveType);
@@ -127,7 +113,7 @@ export default function AttendancePage() {
     });
   };
 
-  // Save all pending changes in one bulk request
+  // Save all pending changes in one bulk request (no department_id)
   const handleSaveAll = async () => {
     if (pendingChanges.size === 0) {
       addToast('info', 'No changes to save.');
@@ -140,7 +126,6 @@ export default function AttendancePage() {
       const [dateStr, staffId] = key.split('|');
       return {
         staff_id: staffId,
-        department_id: selectedDept,
         date: dateStr,
         leave_type: leaveType
       };
@@ -155,7 +140,7 @@ export default function AttendancePage() {
 
       if (res.ok) {
         addToast('success', `Saved ${payload.length} attendance change(s)`);
-        await loadData(); // Refresh and clear pending
+        await loadData();
       } else {
         addToast('error', 'Failed to save attendance changes');
       }
@@ -166,8 +151,18 @@ export default function AttendancePage() {
     setSaving(false);
   };
 
-  const deptName = departments.find((d) => d.id === selectedDept)?.name || '';
   const hasChanges = pendingChanges.size > 0;
+
+  // Group staff by department for organized display
+  const staffByDept = useMemo(() => {
+    const map = new Map<string, Staff[]>();
+    for (const s of staffList) {
+      const deptName = s.departments?.name || 'Unknown';
+      if (!map.has(deptName)) map.set(deptName, []);
+      map.get(deptName)!.push(s);
+    }
+    return map;
+  }, [staffList]);
 
   return (
     <div>
@@ -175,66 +170,46 @@ export default function AttendancePage() {
         <div className="flex flex-col md:flex-row gap-4 justify-between md:items-end mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Attendance Log</h1>
-            <p className="text-slate-400 text-sm">Manage staff presence and casual leaves manually.</p>
+            <p className="text-slate-400 text-sm">Global attendance — applies across all departments.</p>
           </div>
           <div className="flex gap-4 items-center">
-            {selectedDept && hasChanges && (
+            {hasChanges && (
               <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-full">
                 {pendingChanges.size} unsaved change{pendingChanges.size > 1 ? 's' : ''}
               </span>
             )}
-            {selectedDept && (
-              <>
-                <button
-                  onClick={handleSaveAll}
-                  disabled={!hasChanges || saving}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg ${
-                    hasChanges 
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  {saving ? (
-                    <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</>
-                  ) : (
-                    <><Save size={18} /> Save All</>
-                  )}
-                </button>
-                <button
-                  onClick={toggleReviewed}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    isReviewed 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : 'bg-amber-500 text-white shadow-lg'
-                  }`}
-                >
-                  {isReviewed ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
-                  {isReviewed ? 'Reviewed' : 'Review Required'}
-                </button>
-              </>
-            )}
+            <button
+              onClick={handleSaveAll}
+              disabled={!hasChanges || saving}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg ${
+                hasChanges 
+                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              {saving ? (
+                <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</>
+              ) : (
+                <><Save size={18} /> Save All</>
+              )}
+            </button>
+            <button
+              onClick={toggleReviewed}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                isReviewed 
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                  : 'bg-amber-500 text-white shadow-lg'
+              }`}
+            >
+              {isReviewed ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
+              {isReviewed ? 'Reviewed' : 'Review Required'}
+            </button>
           </div>
         </div>
       </div>
 
       <div className="glass-card mb-6" style={{ padding: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Department</label>
-            <select
-              className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-            >
-              <option value="">Select Department</option>
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Month</label>
             <select
@@ -263,19 +238,14 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {!selectedDept ? (
-        <div className="glass-card empty-state">
-          <p style={{ fontSize: '16px', fontWeight: 500 }}>Select a department to view attendance</p>
-          <p className="text-slate-400 text-sm mt-2">Choose from the dropdown above to load data.</p>
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="glass-card empty-state">
           <div className="spinner" style={{ margin: '0 auto 16px', width: '24px', height: '24px' }}></div>
           <p className="text-slate-400">Loading attendance data...</p>
         </div>
       ) : staffList.length === 0 ? (
         <div className="glass-card empty-state">
-          <p style={{ fontSize: '16px', fontWeight: 500 }}>No active staff in {deptName}</p>
+          <p style={{ fontSize: '16px', fontWeight: 500 }}>No active staff found</p>
         </div>
       ) : (
         <div className="glass-card p-0 overflow-hidden border border-slate-700/50">
@@ -299,41 +269,60 @@ export default function AttendancePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                        {staffList.map(staff => {
-                          const currentVal = getEffectiveValue(staff.id, dateStr);
-                          const dirty = isCellDirty(staff.id, dateStr);
-                          
-                          return (
-                            <div 
-                              key={`${dateStr}-${staff.id}`} 
-                              className={`flex flex-col p-3 rounded-lg border shadow-sm transition hover:bg-slate-800/60 ${
-                                dirty 
-                                  ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' 
-                                  : 'border-slate-700/50 bg-slate-800/30'
-                              }`}
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="font-semibold text-sm text-slate-200">{staff.name}</span>
-                                <span className="text-[10px] text-slate-500 uppercase">{staff.role}</span>
-                              </div>
-                              <select 
-                                className={`text-xs font-semibold rounded-md border px-2 py-1.5 outline-none transition-colors w-full cursor-pointer ${
-                                  currentVal === 'OFF' ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30' : 
-                                  currentVal === 'CL' ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30' : 
-                                  'bg-slate-900/50 border-slate-600/50 text-slate-300 hover:border-slate-500'
-                                }`}
-                                value={currentVal}
-                                onChange={(e) => handleLocalChange(staff.id, dateStr, e.target.value)}
-                              >
-                                <option value="" className="bg-slate-800 text-slate-300">Present (Default)</option>
-                                <option value="OFF" className="bg-slate-800 text-red-400">OFF</option>
-                                <option value="CL" className="bg-slate-800 text-amber-400">CL</option>
-                              </select>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {/* Group staff by department */}
+                      {Array.from(staffByDept.entries()).map(([deptName, deptStaff]) => (
+                        <div key={deptName} className="mb-3 last:mb-0">
+                          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">{deptName}</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                            {deptStaff.map(staff => {
+                              const currentVal = getEffectiveValue(staff.id, dateStr);
+                              const dirty = isCellDirty(staff.id, dateStr);
+                              
+                              return (
+                                <div 
+                                  key={`${dateStr}-${staff.id}`} 
+                                  className={`flex flex-col p-3 rounded-lg border shadow-sm transition hover:bg-slate-800/60 ${
+                                    dirty 
+                                      ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' 
+                                      : 'border-slate-700/50 bg-slate-800/30'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-sm text-slate-200">{staff.name}</span>
+                                      {staff.is_general && (
+                                        <span style={{
+                                          fontSize: '9px',
+                                          fontWeight: 700,
+                                          padding: '1px 6px',
+                                          borderRadius: '10px',
+                                          background: 'rgba(168, 85, 247, 0.15)',
+                                          color: '#c084fc',
+                                          letterSpacing: '0.5px',
+                                        }}>GEN</span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-500 uppercase">{staff.role}</span>
+                                  </div>
+                                  <select 
+                                    className={`text-xs font-semibold rounded-md border px-2 py-1.5 outline-none transition-colors w-full cursor-pointer ${
+                                      currentVal === 'OFF' ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30' : 
+                                      currentVal === 'CL' ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30' : 
+                                      'bg-slate-900/50 border-slate-600/50 text-slate-300 hover:border-slate-500'
+                                    }`}
+                                    value={currentVal}
+                                    onChange={(e) => handleLocalChange(staff.id, dateStr, e.target.value)}
+                                  >
+                                    <option value="" className="bg-slate-800 text-slate-300">Present (Default)</option>
+                                    <option value="OFF" className="bg-slate-800 text-red-400">OFF</option>
+                                    <option value="CL" className="bg-slate-800 text-amber-400">CL</option>
+                                  </select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </td>
                   </tr>
                 );
@@ -343,7 +332,7 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Floating Save Bar when there are unsaved changes */}
+      {/* Floating Save Bar */}
       {hasChanges && !saving && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
           <button

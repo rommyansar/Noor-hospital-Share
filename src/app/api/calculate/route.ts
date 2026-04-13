@@ -25,57 +25,76 @@ export async function POST(req: Request) {
   const [yearStr, monthNumStr] = month.split('-');
   const daysInMonth = getDaysInMonth(yearStr, monthNumStr);
 
+  // ── Check GLOBAL attendance review status ──
+  const { data: globalStatus } = await supabase
+    .from('monthly_attendance_status')
+    .select('is_reviewed')
+    .eq('month', month)
+    .maybeSingle();
+
+  if (!globalStatus?.is_reviewed) {
+    return NextResponse.json({ error: `Attendance for ${month} is not reviewed yet.` }, { status: 400 });
+  }
+
   // Determine which departments to process
-  let deptsToProcess: { id: string, name: string }[] = [];
+  let deptsToProcess: { id: string, name: string, include_general_staff: boolean }[] = [];
   if (department_id && department_id !== 'all') {
-    const { data: dept } = await supabase.from('departments').select('id, name').eq('id', department_id).single();
+    const { data: dept } = await supabase.from('departments').select('id, name, include_general_staff').eq('id', department_id).single();
     if (dept) deptsToProcess.push(dept);
     else return NextResponse.json({ error: 'Department not found' }, { status: 400 });
   } else {
-    const { data: allDepts } = await supabase.from('departments').select('id, name').eq('is_active', true);
+    const { data: allDepts } = await supabase.from('departments').select('id, name, include_general_staff').eq('is_active', true);
     if (allDepts) deptsToProcess = allDepts;
+  }
+
+  // ── Fetch ALL general staff once (shared across departments) ──
+  const { data: allGeneralStaff } = await supabase
+    .from('staff')
+    .select('*')
+    .eq('is_general', true)
+    .eq('is_active', true);
+
+  const generalStaffList = allGeneralStaff || [];
+
+  // ── Fetch ALL leaves for this month GLOBALLY (no department_id) ──
+  const { data: allLeavesData } = await supabase
+    .from('staff_leaves')
+    .select('*')
+    .gte('date', `${month}-01`)
+    .lt('date', monthNumStr === '12'
+      ? `${parseInt(yearStr) + 1}-01-01`
+      : `${yearStr}-${String(parseInt(monthNumStr) + 1).padStart(2, '0')}-01`
+    );
+
+  // Build global leave map: date → Set of staff_ids on leave
+  const globalLeavesByDate: Record<string, Set<string>> = {};
+  if (allLeavesData) {
+    for (const l of allLeavesData) {
+      if (!globalLeavesByDate[l.date]) globalLeavesByDate[l.date] = new Set();
+      globalLeavesByDate[l.date].add(l.staff_id);
+    }
   }
 
   // Loop over each department
   let totalDistributed = 0;
 
   for (const dept of deptsToProcess) {
-    // 1. Check if reviewed
-    const { data: status } = await supabase
-      .from('monthly_attendance_status')
-      .select('is_reviewed')
-      .eq('department_id', dept.id)
-      .eq('month', month)
-      .maybeSingle();
-
-    if (!status?.is_reviewed) {
-      return NextResponse.json({ error: `Attendance for ${dept.name} is not reviewed yet.` }, { status: 400 });
-    }
-
-    // 2. Fetch required data for the whole month for this department
+    // Fetch required data for the whole month for this department
     const { data: incomesData } = await supabase.from('daily_income').select('*').eq('department_id', dept.id).like('date', `${month}-%`);
-    const { data: leavesData } = await supabase.from('staff_leaves').select('*').eq('department_id', dept.id).like('date', `${month}-%`);
     const { data: workData } = await supabase.from('staff_work_entries').select('*').eq('department_id', dept.id).like('date', `${month}-%`);
     const { data: rulesData } = await supabase.from('department_rules').select('*').eq('department_id', dept.id).eq('is_active', true);
-    const { data: staffData } = await supabase.from('staff').select('*').eq('department_id', dept.id).eq('is_active', true);
+    const { data: primaryStaffData } = await supabase.from('staff').select('*').eq('department_id', dept.id).eq('is_active', true);
 
-    if (!staffData || staffData.length === 0) continue;
+    // ── Merge general staff if enabled for this department ──
+    let staffData = primaryStaffData || [];
+    if (dept.include_general_staff && generalStaffList.length > 0) {
+      // Add general staff who are NOT already in this department (avoid duplicates)
+      const deptStaffIds = new Set(staffData.map(s => s.id));
+      const eligibleGeneralStaff = generalStaffList.filter(gs => !deptStaffIds.has(gs.id));
+      staffData = [...staffData, ...eligibleGeneralStaff];
+    }
 
-    const incomesByDate: Record<string, number> = {};
-    if (incomesData) incomesData.forEach(d => { incomesByDate[d.date] = d.amount; });
-
-    const leavesByDate: Record<string, Set<string>> = {};
-    if (leavesData) leavesData.forEach(l => {
-      if (!leavesByDate[l.date]) leavesByDate[l.date] = new Set();
-      leavesByDate[l.date].add(l.staff_id);
-    });
-
-    const workByDateAndStaff: Record<string, Record<string, any[]>> = {};
-    if (workData) workData.forEach(w => {
-      if (!workByDateAndStaff[w.date]) workByDateAndStaff[w.date] = {};
-      if (!workByDateAndStaff[w.date][w.staff_id]) workByDateAndStaff[w.date][w.staff_id] = [];
-      workByDateAndStaff[w.date][w.staff_id].push(w);
-    });
+    if (staffData.length === 0) continue;
 
     const ruleMap: Record<string, any> = {};
     if (rulesData) rulesData.forEach(r => { ruleMap[r.role] = r; });
@@ -88,13 +107,24 @@ export async function POST(req: Request) {
       const dayData = incomesData?.find(d => d.date === dateStr);
       const income = dayData?.amount || 0;
       
-      const onLeaveSet = leavesByDate[dateStr] || new Set();
+      // ── GLOBAL leave set for this date ──
+      const onLeaveSet = globalLeavesByDate[dateStr] || new Set();
       
       // Compute present staff for this specific day
       let presentStaff = [];
       if (dayData && dayData.present_staff_ids && Array.isArray(dayData.present_staff_ids)) {
-        // If explicitly set via the new manual selector, use ONLY those staff and ensure they aren't on leave
-        presentStaff = staffData.filter(s => dayData.present_staff_ids.includes(s.id) && !onLeaveSet.has(s.id));
+        // If explicitly set via the manual selector, use ONLY those staff and ensure they aren't on leave
+        const explicitIds = new Set(dayData.present_staff_ids as string[]);
+        const primaryPresent = (primaryStaffData || []).filter(s => explicitIds.has(s.id) && !onLeaveSet.has(s.id));
+        
+        // General staff: present unless on leave (they're not tracked in present_staff_ids since it's dept-specific)
+        let generalPresent: typeof generalStaffList = [];
+        if (dept.include_general_staff) {
+          const deptStaffIds = new Set((primaryStaffData || []).map(s => s.id));
+          generalPresent = generalStaffList.filter(gs => !deptStaffIds.has(gs.id) && !onLeaveSet.has(gs.id));
+        }
+        
+        presentStaff = [...primaryPresent, ...generalPresent];
       } else {
         // Fallback: everyone minus those on leave
         presentStaff = staffData.filter(s => !onLeaveSet.has(s.id));
@@ -107,11 +137,10 @@ export async function POST(req: Request) {
         presentCountByRole[s.role] = (presentCountByRole[s.role] || 0) + 1;
       }
 
-      // 1. Process all work entries (manual overrides/cross-dept) for this day FIRST
+      // 1. Process all work entries for this day FIRST
       const dayWorkEntries = workData?.filter(w => w.date === dateStr) || [];
       let manualDeductions = 0;
       
-      // Group work entries by staff
       const workByStaff = dayWorkEntries.reduce((acc, w) => {
         if (!acc[w.staff_id]) acc[w.staff_id] = [];
         acc[w.staff_id].push(w);
@@ -123,7 +152,7 @@ export async function POST(req: Request) {
         const share = computeWorkEntryShare(entries);
         newResults.push({
             staff_id: staffId, department_id: dept.id, date: dateStr,
-            income_amount: income, // Gross income before deduction
+            income_amount: income,
             calculation_type: 'work_entry', rule_percentage: null,
             distribution_type: null, pool_amount: 0, present_count: 1, final_share: share,
             breakdown: { entries, total: share, type: 'manual_override' },
@@ -135,9 +164,8 @@ export async function POST(req: Request) {
       // 2. Adjust income pool for regular rules
       const adjustedIncome = Math.max(0, income - manualDeductions);
 
-      // 3. Process primary staff regular rules
+      // 3. Process staff via rules
       for (const staff of presentStaff) {
-        // Skip if this staff had a manual work entry
         if (workByStaff[staff.id]) continue;
 
         const rule = ruleMap[staff.role];
@@ -145,7 +173,7 @@ export async function POST(req: Request) {
             newResults.push({
             staff_id: staff.id, department_id: dept.id, date: dateStr, income_amount: adjustedIncome, calculation_type: 'rule',
             rule_percentage: '0', distribution_type: 'individual', pool_amount: 0, present_count: 1, final_share: 0,
-            breakdown: { note: `No rule defined for role: ${staff.role}` }
+            breakdown: { note: `No rule defined for role: ${staff.role}`, is_general: staff.is_general || false }
           });
           continue;
         }
@@ -157,8 +185,6 @@ export async function POST(req: Request) {
         let presentCount = 1;
 
         if (distType === 'group') {
-          // Note: presentCountByRole includes staff with manual overrides. 
-          // We leave them in the count so group division remains accurate across the role pool.
           presentCount = presentCountByRole[staff.role] || 1;
           share = computeGroupShare(adjustedIncome, pctStr, presentCount);
           poolAmount = computePoolAmount(adjustedIncome, pctStr);
@@ -169,7 +195,7 @@ export async function POST(req: Request) {
         newResults.push({
           staff_id: staff.id, department_id: dept.id, date: dateStr, income_amount: adjustedIncome, calculation_type: 'rule',
           rule_percentage: pctStr, distribution_type: distType, pool_amount: poolAmount, present_count: presentCount,
-          final_share: share, breakdown: { role: staff.role, percentage: `${parsePercentage(pctStr)}%`, distribution: distType, presentInRole: presentCount, gross_income: income, manual_deductions: manualDeductions }
+          final_share: share, breakdown: { role: staff.role, percentage: `${parsePercentage(pctStr)}%`, distribution: distType, presentInRole: presentCount, gross_income: income, manual_deductions: manualDeductions, is_general: staff.is_general || false }
         });
         totalDistributed += share;
       }
@@ -178,7 +204,7 @@ export async function POST(req: Request) {
     // Delete old results for this dept and month
     await supabase.from('daily_results').delete().eq('department_id', dept.id).like('date', `${month}-%`);
 
-    // Insert new results in chunks (max 1000 items per chunk)
+    // Insert new results in chunks
     const chunkSize = 1000;
     for (let i = 0; i < newResults.length; i += chunkSize) {
        const chunk = newResults.slice(i, i + chunkSize);

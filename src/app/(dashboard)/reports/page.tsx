@@ -1,10 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { FileBarChart, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FileBarChart, ChevronDown, ChevronUp, Download, FileSpreadsheet, FileText, X } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
+import { exportExcel, exportPDF, type ReportExportData, type ReportType } from '@/lib/reportExport';
+
+interface WorkEntryDetail {
+  date: string;
+  description: string;
+  work_amount: number;
+  percentage: string;
+  calculated_share: number;
+}
+
+interface RuleEntryDetail {
+  date: string;
+  income_amount: number;
+  percentage: string;
+  distribution_type: string;
+  present_count: number;
+  calculated_share: number;
+}
 
 interface StaffReport {
   staff_id: string;
@@ -13,6 +31,8 @@ interface StaffReport {
   total_share: number;
   days_present: number;
   daily_details: { date: string; share: number; type: string }[];
+  work_entries: WorkEntryDetail[];
+  rule_entries: RuleEntryDetail[];
 }
 
 interface ReportData {
@@ -34,6 +54,9 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
@@ -70,21 +93,52 @@ export default function ReportsPage() {
 
   const deptName = departments.find((d) => d.id === selectedDept)?.name || '';
 
-  // Export as CSV
-  const exportCSV = () => {
-    if (!report || report.staff.length === 0) return;
-    const headers = ['Staff Name', 'Role', 'Days Present', 'Total Share'];
-    const rows = report.staff.map((s) => [s.staff_name, s.role, s.days_present, s.total_share]);
-    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${deptName}-${MONTHS[month - 1]}-${year}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('success', 'Report exported');
+  // Build export data
+  const getExportData = (): ReportExportData | null => {
+    if (!report || report.staff.length === 0) return null;
+    return {
+      department_name: deptName,
+      year: report.year,
+      month: report.month,
+      total_income: report.total_income,
+      total_distributed: report.total_distributed,
+      staff: report.staff,
+    };
   };
+
+  const handleExport = (format: 'excel' | 'pdf', type: ReportType) => {
+    const data = getExportData();
+    if (!data) {
+      addToast('error', 'No report data to export');
+      return;
+    }
+
+    setExportLoading(true);
+    try {
+      if (format === 'excel') {
+        exportExcel(data, type);
+      } else {
+        exportPDF(data, type);
+      }
+      addToast('success', `${type === 'normal' ? 'Normal' : 'Detailed'} report exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      addToast('error', 'Failed to export report');
+      console.error('Export error:', err);
+    }
+    setExportLoading(false);
+    setShowExportModal(false);
+  };
+
+  // Close modal on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+        setShowExportModal(false);
+      }
+    };
+    if (showExportModal) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportModal]);
 
   const [calculating, setCalculating] = useState(false);
 
@@ -126,7 +180,7 @@ export default function ReportsPage() {
             Aggregated daily shares by month
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {selectedDept && (
             <button className="btn-primary" onClick={() => runCalculation('department')} disabled={calculating} style={{ padding: '8px 16px' }}>
               {calculating ? 'Calculating...' : `Calculate ${deptName}`}
@@ -136,8 +190,16 @@ export default function ReportsPage() {
             {calculating ? 'Calculating...' : 'Calculate Overall'}
           </button>
           {report && report.staff.length > 0 && (
-            <button className="btn-secondary" onClick={exportCSV}>
-              <Download size={16} /> Export CSV
+            <button
+              className="btn-secondary"
+              onClick={() => setShowExportModal(true)}
+              style={{
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.15))',
+                borderColor: 'rgba(16, 185, 129, 0.4)',
+                color: '#34d399',
+              }}
+            >
+              <Download size={16} /> Export Report
             </button>
           )}
         </div>
@@ -274,6 +336,231 @@ export default function ReportsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Export Modal ── */}
+      {showExportModal && (
+        <div className="modal-overlay">
+          <div ref={modalRef} className="modal-content" style={{ maxWidth: '520px' }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#e2e8f0' }}>Export Report</h2>
+                <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                  {deptName} — {MONTHS[month - 1]} {year}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  background: 'rgba(71, 85, 105, 0.3)',
+                  border: '1px solid rgba(71, 85, 105, 0.4)',
+                  borderRadius: '10px',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Report Type Info */}
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
+                Choose Report Type & Format
+              </p>
+            </div>
+
+            {/* Normal Report Section */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.03))',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              borderRadius: '14px',
+              padding: '20px',
+              marginBottom: '14px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <FileText size={20} color="#34d399" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Normal Report</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
+                    Clean summary for staff viewing. Multiple work entries per staff are combined into a single row.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  className="export-btn"
+                  disabled={exportLoading}
+                  onClick={() => handleExport('pdf', 'normal')}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    color: '#f87171',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15))';
+                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))';
+                    (e.target as HTMLElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  <FileText size={15} /> PDF
+                </button>
+                <button
+                  className="export-btn"
+                  disabled={exportLoading}
+                  onClick={() => handleExport('excel', 'normal')}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08))',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '10px',
+                    color: '#34d399',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15))';
+                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08))';
+                    (e.target as HTMLElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  <FileSpreadsheet size={15} /> Excel
+                </button>
+              </div>
+            </div>
+
+            {/* Detailed Report Section */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03))',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '14px',
+              padding: '20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <FileBarChart size={20} color="#60a5fa" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Detailed Report</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
+                    Full audit view with complete calculation breakdown. Each work entry shown separately with work type, amount, and percentage.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  className="export-btn"
+                  disabled={exportLoading}
+                  onClick={() => handleExport('pdf', 'detailed')}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    color: '#f87171',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15))';
+                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))';
+                    (e.target as HTMLElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  <FileText size={15} /> PDF
+                </button>
+                <button
+                  className="export-btn"
+                  disabled={exportLoading}
+                  onClick={() => handleExport('excel', 'detailed')}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08))',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '10px',
+                    color: '#60a5fa',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(59, 130, 246, 0.15))';
+                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08))';
+                    (e.target as HTMLElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  <FileSpreadsheet size={15} /> Excel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Users, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Users, Pencil, Trash2, X, Globe } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department, Staff, StaffForm } from '@/lib/types';
 
@@ -13,7 +13,7 @@ export default function StaffPage() {
   const [filterDept, setFilterDept] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', role: '', is_active: true });
+  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', role: '', is_active: true, is_general: false });
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
@@ -36,13 +36,19 @@ export default function StaffPage() {
 
   const openAdd = () => {
     setEditingId(null);
-    setForm({ name: '', department_id: filterDept, role: '', is_active: true });
+    setForm({ name: '', department_id: filterDept, role: '', is_active: true, is_general: false });
     setShowModal(true);
   };
 
   const openEdit = (s: Staff) => {
     setEditingId(s.id);
-    setForm({ name: s.name, department_id: s.department_id, role: s.role, is_active: s.is_active });
+    setForm({
+      name: s.name,
+      department_id: s.department_id,
+      role: s.role,
+      is_active: s.is_active,
+      is_general: s.is_general ?? false,
+    });
     setShowModal(true);
   };
 
@@ -128,6 +134,7 @@ export default function StaffPage() {
                 <tr>
                   <th>Name</th>
                   <th>Role</th>
+                  <th>Type</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
@@ -138,6 +145,36 @@ export default function StaffPage() {
                     <td style={{ fontWeight: 600 }}>{s.name}</td>
                     <td>
                       <span className="badge badge-info">{s.role}</span>
+                    </td>
+                    <td>
+                      {s.is_general ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(168, 85, 247, 0.12)',
+                          color: '#c084fc',
+                        }}>
+                          <Globe size={12} /> General
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          color: '#60a5fa',
+                        }}>
+                          Department
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span className={s.is_active ? 'badge badge-success' : 'badge badge-danger'}>
@@ -223,6 +260,41 @@ export default function StaffPage() {
                 onClick={() => setForm({ ...form, is_active: !form.is_active })}
               >
                 <div className="toggle-knob" />
+              </div>
+            </div>
+
+            {/* General Staff Toggle */}
+            <div className="form-group">
+              <div style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                borderRadius: '12px',
+                background: form.is_general
+                  ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(168, 85, 247, 0.03))'
+                  : 'rgba(30, 41, 59, 0.4)',
+                border: form.is_general
+                  ? '1px solid rgba(168, 85, 247, 0.25)'
+                  : '1px solid rgba(71, 85, 105, 0.2)',
+                transition: 'all 0.3s ease',
+              }}>
+                <div>
+                  <label className="form-label mb-0" style={{ marginBottom: 0, color: form.is_general ? '#c084fc' : '#94a3b8' }}>
+                    General Staff
+                  </label>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', lineHeight: 1.4 }}>
+                    Receives share from all departments that include general staff
+                  </p>
+                </div>
+                <div
+                  className={`toggle-switch ${form.is_general ? 'active' : 'inactive'}`}
+                  onClick={() => setForm({ ...form, is_general: !form.is_general })}
+                  style={form.is_general ? { background: 'linear-gradient(135deg, #a855f7, #7c3aed)' } : {}}
+                >
+                  <div className="toggle-knob" />
+                </div>
               </div>
             </div>
 

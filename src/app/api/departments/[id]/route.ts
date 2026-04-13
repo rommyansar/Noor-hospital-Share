@@ -10,7 +10,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     .update({ 
       name: body.name, 
       is_active: body.is_active,
-      is_sub_department: body.is_sub_department 
+      is_sub_department: body.is_sub_department,
+      include_general_staff: body.include_general_staff,
     })
     .eq('id', id)
     .select()

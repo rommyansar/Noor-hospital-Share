@@ -9,6 +9,7 @@ export interface Department {
   name: string;
   is_active: boolean;
   is_sub_department: boolean;
+  include_general_staff: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -19,6 +20,7 @@ export interface Staff {
   department_id: string;
   role: string;
   is_active: boolean;
+  is_general: boolean;
   staff_code?: string;
   created_at: string;
   updated_at: string;
@@ -61,7 +63,6 @@ export type LeaveType = 'OFF' | 'CL';
 export interface StaffLeave {
   id: string;
   staff_id: string;
-  department_id: string;
   date: string;
   leave_type: LeaveType;
   created_at: string;
@@ -104,6 +105,7 @@ export interface DepartmentForm {
   name: string;
   is_active: boolean;
   is_sub_department: boolean;
+  include_general_staff: boolean;
 }
 
 export interface StaffForm {
@@ -111,6 +113,7 @@ export interface StaffForm {
   department_id: string;
   role: string;
   is_active: boolean;
+  is_general: boolean;
 }
 
 export interface DepartmentRuleForm {

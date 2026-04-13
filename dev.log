@@ -1040,3 +1040,4 @@ Import traces:
  GET /login? 200 in 150ms (next.js: 20ms, proxy.ts: 7ms, application-code: 122ms)
 ✓ Compiled in 78ms
 ✓ Compiled in 37ms
+[?25h

@@ -20,7 +20,8 @@ export async function POST(req: Request) {
     .insert({ 
       name: body.name, 
       is_active: body.is_active ?? true,
-      is_sub_department: body.is_sub_department ?? false
+      is_sub_department: body.is_sub_department ?? false,
+      include_general_staff: body.include_general_staff ?? true,
     })
     .select()
     .single();

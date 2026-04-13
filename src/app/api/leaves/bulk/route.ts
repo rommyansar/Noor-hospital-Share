@@ -9,9 +9,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Expected an array of leaves' }, { status: 400 });
   }
 
-  // separate the null records from the OFF/CL records
-  const toUpsert = body.filter(l => l.leave_type !== null);
-  const toDelete = body.filter(l => l.leave_type === null);
+  // Strip department_id from any payloads (global attendance)
+  const cleaned = body.map(({ department_id, ...rest }) => rest);
+
+  // Separate the null records from the OFF/CL records
+  const toUpsert = cleaned.filter(l => l.leave_type !== null);
+  const toDelete = cleaned.filter(l => l.leave_type === null);
 
   if (toUpsert.length > 0) {
     const { error: upsertError } = await supabase

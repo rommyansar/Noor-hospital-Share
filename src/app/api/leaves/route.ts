@@ -2,27 +2,21 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient as createClient } from '@/lib/supabase/server';
 
 /**
- * GET /api/leaves?department_id=...&month=YYYY-MM
- * Returns all leave records for a department in a month.
+ * GET /api/leaves?month=YYYY-MM
+ * Returns all leave records for ALL staff in a month (global attendance).
  *
- * GET /api/leaves?department_id=...&date=YYYY-MM-DD
+ * GET /api/leaves?date=YYYY-MM-DD
  * Returns leave records for a specific date (used by calculation).
  */
 export async function GET(req: Request) {
   const supabase = await createClient();
   const { searchParams } = new URL(req.url);
-  const deptId = searchParams.get('department_id');
   const date = searchParams.get('date');
   const month = searchParams.get('month'); // YYYY-MM
-
-  if (!deptId) {
-    return NextResponse.json({ error: 'department_id required' }, { status: 400 });
-  }
 
   let query = supabase
     .from('staff_leaves')
     .select('*, staff(id, name, role)')
-    .eq('department_id', deptId)
     .order('date');
 
   if (date) {
@@ -45,8 +39,8 @@ export async function GET(req: Request) {
 
 /**
  * POST /api/leaves
- * Add or remove a leave day.
- * Body: { staff_id, department_id, date, leave_type: 'OFF' | 'CL' }
+ * Add or remove a leave day (global — no department_id).
+ * Body: { staff_id, date, leave_type: 'OFF' | 'CL' }
  *
  * If leave_type is provided → upsert leave record (mark OFF/CL)
  * If leave_type is null/empty → delete the record (mark as PRESENT)
@@ -54,10 +48,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const supabase = await createClient();
   const body = await req.json();
-  const { staff_id, department_id, date, leave_type } = body;
+  const { staff_id, date, leave_type } = body;
 
-  if (!staff_id || !department_id || !date) {
-    return NextResponse.json({ error: 'staff_id, department_id, and date required' }, { status: 400 });
+  if (!staff_id || !date) {
+    return NextResponse.json({ error: 'staff_id and date required' }, { status: 400 });
   }
 
   if (!leave_type) {
@@ -71,11 +65,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ removed: true });
   }
 
-  // Upsert leave record
+  // Upsert leave record (no department_id)
   const { data, error } = await supabase
     .from('staff_leaves')
     .upsert(
-      { staff_id, department_id, date, leave_type },
+      { staff_id, date, leave_type },
       { onConflict: 'staff_id,date' }
     )
     .select()

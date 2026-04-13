@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       department_id: body.department_id,
       role: body.role || 'Staff',
       is_active: body.is_active ?? true,
+      is_general: body.is_general ?? false,
     })
     .select('*, departments(*)')
     .single();

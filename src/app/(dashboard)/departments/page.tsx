@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Building2, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Building2, Pencil, Trash2, X, Users } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department, DepartmentForm } from '@/lib/types';
 
@@ -11,7 +11,7 @@ export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<DepartmentForm>({ name: '', is_active: true, is_sub_department: false });
+  const [form, setForm] = useState<DepartmentForm>({ name: '', is_active: true, is_sub_department: false, include_general_staff: true });
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
@@ -24,13 +24,18 @@ export default function DepartmentsPage() {
 
   const openAdd = () => {
     setEditingId(null);
-    setForm({ name: '', is_active: true, is_sub_department: false });
+    setForm({ name: '', is_active: true, is_sub_department: false, include_general_staff: true });
     setShowModal(true);
   };
 
   const openEdit = (dept: Department) => {
     setEditingId(dept.id);
-    setForm({ name: dept.name, is_active: dept.is_active, is_sub_department: dept.is_sub_department || false });
+    setForm({
+      name: dept.name,
+      is_active: dept.is_active,
+      is_sub_department: dept.is_sub_department || false,
+      include_general_staff: dept.include_general_staff ?? true,
+    });
     setShowModal(true);
   };
 
@@ -97,6 +102,7 @@ export default function DepartmentsPage() {
                 <tr>
                   <th>Name</th>
                   <th>Type</th>
+                  <th>General Staff</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
@@ -124,6 +130,37 @@ export default function DepartmentsPage() {
                       }`}>
                         {d.is_sub_department ? 'Sub-Department' : 'Primary'}
                       </span>
+                    </td>
+                    <td>
+                      {d.include_general_staff ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(168, 85, 247, 0.12)',
+                          color: '#c084fc',
+                        }}>
+                          <Users size={12} /> Included
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(100, 116, 139, 0.12)',
+                          color: '#64748b',
+                        }}>
+                          Excluded
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span className={d.is_active ? 'badge badge-success' : 'badge badge-danger'}>
@@ -191,6 +228,41 @@ export default function DepartmentsPage() {
                 <div
                   className={`toggle-switch ${form.is_sub_department ? 'active' : 'inactive'}`}
                   onClick={() => setForm({ ...form, is_sub_department: !form.is_sub_department })}
+                >
+                  <div className="toggle-knob" />
+                </div>
+              </div>
+            </div>
+
+            {/* Include General Staff Toggle */}
+            <div className="form-group pb-2">
+              <div style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                borderRadius: '12px',
+                background: form.include_general_staff
+                  ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(168, 85, 247, 0.03))'
+                  : 'rgba(30, 41, 59, 0.4)',
+                border: form.include_general_staff
+                  ? '1px solid rgba(168, 85, 247, 0.25)'
+                  : '1px solid rgba(71, 85, 105, 0.2)',
+                transition: 'all 0.3s ease',
+              }}>
+                <div>
+                  <label className="form-label mb-0" style={{ marginBottom: 0, color: form.include_general_staff ? '#c084fc' : '#94a3b8' }}>
+                    Include General Staff
+                  </label>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', lineHeight: 1.4 }}>
+                    Security, Helpers, Sweepers, etc. will receive share from this department
+                  </p>
+                </div>
+                <div
+                  className={`toggle-switch ${form.include_general_staff ? 'active' : 'inactive'}`}
+                  onClick={() => setForm({ ...form, include_general_staff: !form.include_general_staff })}
+                  style={form.include_general_staff ? { background: 'linear-gradient(135deg, #a855f7, #7c3aed)' } : {}}
                 >
                   <div className="toggle-knob" />
                 </div>

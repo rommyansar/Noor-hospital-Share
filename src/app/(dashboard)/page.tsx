@@ -14,20 +14,29 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function loadStats() {
-      const supabase = createClient();
-      
-      const { count: dpCount } = await supabase.from('departments').select('*', { count: 'exact', head: true });
-      const { count: stCount } = await supabase.from('staff').select('*', { count: 'exact', head: true }).eq('is_active', true);
-      
-      const today = new Date().toISOString().split('T')[0];
-      const { count: lvCount } = await supabase.from('staff_leaves').select('*', { count: 'exact', head: true }).eq('date', today);
+      try {
+        const supabase = createClient();
+        
+        const { count: dpCount, error: dpError } = await supabase.from('departments').select('*', { count: 'exact', head: true });
+        if (dpError) console.error("Departments Error:", dpError);
 
-      setStats({
-        departments: dpCount || 0,
-        staff: stCount || 0,
-        activeLeaves: lvCount || 0,
-      });
-      setLoading(false);
+        const { count: stCount, error: stError } = await supabase.from('staff').select('*', { count: 'exact', head: true }).eq('is_active', true);
+        if (stError) console.error("Staff Error:", stError);
+        
+        const today = new Date().toISOString().split('T')[0];
+        const { count: lvCount, error: lvError } = await supabase.from('staff_leaves').select('*', { count: 'exact', head: true }).eq('date', today);
+        if (lvError) console.error("Leaves Error:", lvError);
+
+        setStats({
+          departments: dpCount || 0,
+          staff: stCount || 0,
+          activeLeaves: lvCount || 0,
+        });
+      } catch (err) {
+        console.error("Dashboard Stats Error:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     loadStats();
   }, []);

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient as createClient } from '@/lib/supabase/server';
+import { getReportCache, setReportCache } from '@/lib/cache';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
-  const supabase = await createClient();
   const { searchParams } = new URL(req.url);
   const deptId = searchParams.get('department_id');
   const year = searchParams.get('year');
@@ -12,6 +14,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'department_id, year, and month required' }, { status: 400 });
   }
 
+  const monthStr = `${year}-${String(parseInt(month)).padStart(2, '0')}`;
+  const cachedData = getReportCache(deptId, monthStr);
+  if (cachedData) {
+    return NextResponse.json(cachedData);
+  }
+
+  const supabase = await createClient();
+
   const y = parseInt(year);
   const m = parseInt(month);
   const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
@@ -20,7 +30,7 @@ export async function GET(req: Request) {
   // Get all daily results for this dept in this month
   const { data: results, error } = await supabase
     .from('daily_results')
-    .select('*, staff(*)')
+    .select('*, staff(*, departments!inner(name))')
     .eq('department_id', deptId)
     .gte('date', startDate)
     .lt('date', endDate)
@@ -29,55 +39,58 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Aggregate by staff
-  const staffTotals: Record<string, {
-    staff_id: string;
-    staff_name: string;
-    role: string;
-    total_share: number;
-    days_present: number;
-    daily_details: { date: string; share: number; type: string }[];
-    work_entries: {
-      date: string;
-      description: string;
-      work_amount: number;
-      percentage: string;
-      calculated_share: number;
-    }[];
-    rule_entries: {
-      date: string;
-      income_amount: number;
-      percentage: string;
-      distribution_type: string;
-      present_count: number;
-      calculated_share: number;
-    }[];
-  }> = {};
+  const staffTotals: Record<string, any> = {};
+
+  // Build set of dates present for each staff to avoid double counting for daily rules
+  const presentDates: Record<string, Set<string>> = {};
 
   for (const r of (results || [])) {
+    const breakdownObj = r.breakdown as Record<string, any> | null;
+    const isAddon = breakdownObj?.type === 'addon_share' || !!breakdownObj?.addon_department;
+    
     if (!staffTotals[r.staff_id]) {
+      // Get the correct origin department
+      let originDept = ((r.staff as any)?.departments?.name || 'Unknown');
+      if (isAddon && breakdownObj?.addon_department) {
+        originDept = breakdownObj.addon_department;
+      }
+
       staffTotals[r.staff_id] = {
         staff_id: r.staff_id,
         staff_name: r.staff?.name || 'Unknown',
         role: r.staff?.role || 'Unknown',
+        origin_department: originDept,
         total_share: 0,
         days_present: 0,
         daily_details: [],
         work_entries: [],
         rule_entries: [],
       };
+      presentDates[r.staff_id] = new Set();
     }
+    
     staffTotals[r.staff_id].total_share += r.final_share;
-    staffTotals[r.staff_id].days_present += 1;
+    
+    const breakdown = r.breakdown as Record<string, any> | null;
+    const ruleInBreakdown = breakdown?.attendance_rule as string | undefined;
+
+    if (ruleInBreakdown === 'monthly' && breakdown?.present_days !== undefined) {
+      staffTotals[r.staff_id].days_present = Number(breakdown.present_days);
+    } else if (ruleInBreakdown === 'none') {
+      staffTotals[r.staff_id].days_present = -1;
+    } else if (staffTotals[r.staff_id].days_present >= 0) {
+      presentDates[r.staff_id].add(r.date);
+      staffTotals[r.staff_id].days_present = presentDates[r.staff_id].size;
+    }
+
     staffTotals[r.staff_id].daily_details.push({
       date: r.date,
       share: r.final_share,
       type: r.calculation_type,
+      note: (r.breakdown as Record<string, unknown> | null)?.note as string || null,
     });
 
-    const breakdown = r.breakdown as Record<string, unknown> | null;
-
     if (r.calculation_type === 'work_entry') {
-      // Extract individual work entries from the breakdown
       const entries = (breakdown?.entries || []) as { amount: number; percentage: string }[];
       for (const entry of entries) {
         const pct = parseFloat(entry.percentage || '0') || 0;
@@ -91,7 +104,6 @@ export async function GET(req: Request) {
         });
       }
     } else {
-      // Rule-based entry
       staffTotals[r.staff_id].rule_entries.push({
         date: r.date,
         income_amount: r.income_amount,
@@ -103,31 +115,55 @@ export async function GET(req: Request) {
     }
   }
 
-  // Sort by total share descending
-  const aggregated = Object.values(staffTotals).sort((a, b) => b.total_share - a.total_share);
+  // Fetch department name, monthly total, income data, and work entries ALL in parallel
+  // (was 4 sequential round-trips → now 1 concurrent batch)
+  const [deptRes, deptTotalRes, incomeRes, workEntriesRes] = await Promise.all([
+    supabase.from('departments').select('name').eq('id', deptId).single(),
+    supabase.from('department_monthly_totals').select('total_amount').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
+    supabase.from('daily_income').select('amount').eq('department_id', deptId).gte('date', startDate).lt('date', endDate),
+    supabase.from('staff_work_entries').select('*').eq('department_id', deptId).gte('date', startDate).lt('date', endDate).order('date'),
+  ]);
 
-  // Also get daily income totals
-  const { data: incomeData } = await supabase
-    .from('daily_income')
-    .select('*')
-    .eq('department_id', deptId)
-    .gte('date', startDate)
-    .lt('date', endDate);
+  const mainDeptName = deptRes.data?.name || 'Unknown';
 
-  const totalIncome = (incomeData || []).reduce((s, d) => s + (d.amount || 0), 0);
-  const totalDistributed = aggregated.reduce((s, a) => s + a.total_share, 0);
+  // Apply sorting rules
+  const aggregated = Object.values(staffTotals).sort((a: any, b: any) => {
+    const aIsMain = a.origin_department === mainDeptName;
+    const bIsMain = b.origin_department === mainDeptName;
 
-  // Also fetch actual work entry descriptions from staff_work_entries for this month
-  const { data: workEntries } = await supabase
-    .from('staff_work_entries')
-    .select('*')
-    .eq('department_id', deptId)
-    .gte('date', startDate)
-    .lt('date', endDate)
-    .order('date');
+    // 1. Priority: Main Department Staff First
+    if (aIsMain && !bIsMain) return -1;
+    if (!aIsMain && bIsMain) return 1;
 
-  // Build a lookup: staff_id -> date -> entries
-  const workLookup: Record<string, Record<string, { description: string; amount: number; percentage: string }[]>> = {};
+    // 2. Within Main Department: Doctors First, then others, all by Amount DESC
+    if (aIsMain && bIsMain) {
+      const aIsDoctor = a.role.toLowerCase().includes('doctor');
+      const bIsDoctor = b.role.toLowerCase().includes('doctor');
+      
+      if (aIsDoctor && !bIsDoctor) return -1;
+      if (!aIsDoctor && bIsDoctor) return 1;
+
+      return b.total_share - a.total_share;
+    }
+
+    // 3. For Add-On Departments: group by dept name (alphabetical), then by amount DESC
+    if (a.origin_department !== b.origin_department) {
+      return a.origin_department.localeCompare(b.origin_department);
+    }
+    return b.total_share - a.total_share;
+  });
+
+  // Compute total income from pre-fetched data
+  let totalIncome = Number(deptTotalRes.data?.total_amount) || 0;
+  if (totalIncome <= 0) {
+    totalIncome = (incomeRes.data || []).reduce((s: number, d: any) => s + (d.amount || 0), 0);
+  }
+
+  const totalDistributed = aggregated.reduce((s: number, a: any) => s + a.total_share, 0);
+
+  const workEntries = workEntriesRes.data;
+
+  const workLookup: Record<string, Record<string, any[]>> = {};
   for (const w of (workEntries || [])) {
     if (!workLookup[w.staff_id]) workLookup[w.staff_id] = {};
     if (!workLookup[w.staff_id][w.date]) workLookup[w.staff_id][w.date] = [];
@@ -138,11 +174,10 @@ export async function GET(req: Request) {
     });
   }
 
-  // Enhance staff data with actual descriptions from work entries
+  // Enhance staff data
   for (const staff of aggregated) {
     const staffWorkLookup = workLookup[staff.staff_id] || {};
-    // Replace work_entries with actual data from staff_work_entries table
-    const enhancedWorkEntries: typeof staff.work_entries = [];
+    const enhancedWorkEntries: any[] = [];
     for (const dateKey of Object.keys(staffWorkLookup)) {
       for (const entry of staffWorkLookup[dateKey]) {
         const pct = parseFloat(entry.percentage || '0') || 0;
@@ -161,7 +196,7 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({
+  const result = {
     department_id: deptId,
     year: y,
     month: m,
@@ -172,5 +207,9 @@ export async function GET(req: Request) {
       ...s,
       total_share: Math.round(s.total_share * 100) / 100,
     })),
-  });
+  };
+
+  setReportCache(deptId, monthStr, result);
+
+  return NextResponse.json(result);
 }

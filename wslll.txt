@@ -1,0 +1,559 @@
+General Surgery TDA      61900/-+5300/-=67200/-
+Dr.Tareque                         27700*10%,1000*5%,0*15%  
+Dr.Mahmood Butt             16500*10%,200*5%,0*7.5%
+Dr.Maryam                1300*10%,0*16.5%,30400*3.75%
+Bari                         10200*1.5%,40100*1%,1100*1.5/2%
+Tahira                       3000*1.5 %,2400*1%,43012*3/28%
+Meraj                                              5000*1%,48023*3/28% 
+Perwaiz                           2500*3%,6450*1.5%,12400*1%
+17400*1/2%
+Tajammul                     8600*1.5%,9000*1%,7000*1/2%
+10800*1/3%                                                                                                                                                                                                                      Aleem                                                                       2800*1%                                                                                                                                                                                                                      
+Pooja                                             21200*1%,17991*3/28%                                                                                                                                                                                                                      
+Davinder                                        9200*1%,36907*3/28%
+Jasbir                      400*1.5/2%,11100*1%,27691*3/28%
+Amarjit                                       1300*1.5%,47112*3/28%
+Paramjit  Riar                         10800*1/3%,44528*3/28%
+Sulakhni                                         18100*1%,4953*3/28%
+Nazma K                                            1000*1.5%,2800*1%
+Rupinder Ruby                       10800*1/3%,33001*3/28%
+Manjit                                                               41496*3/28%
+Rupinderjit Buttar                                          0*3/28%
+Sarabjit                                                            43801*3/28%
+Gurwinder                                                      39191*3/28% 
+Harpreet Happy                                            36885*3/28% 
+Heena                                        10400*1/2%,26485*3/28% 
+Asfa Begum                                                     57633*3/28% 
+Reema                                           500*1.5%,40996*3/28% 
+Manjinder                                                       41496*3/28% 
+Amanpreet                                                      53023*3/28% 
+Rajwant                                     400*1.5/2%,27264*3/28% 
+Rajwinder Tatla                                             43801*3/28% 
+Sareena                             200*1%,500*1.5%,600*1.5/2%
+Manjit Riar                                                     25358*3/28%
+Luxmi                                                               50717*3/28% 
+Rubina                      1000*3%,1000*1.5%,39496*3/28% 
+Shazia                                                               53023*3/28% 
+Pooja Masih                                                    43801*3/28% 
+Amtus Saboor                                                48412*3/28% 
+Amtush Shakoor                                            41496*3/28% 
+Dr. Abdul Majid                                              67200*.05%
+S.Guard    Lateef  		                   29969*.5/8%
+     Mukhtar  		                   29969*.5/8%
+	     Tahir Mumtaz                              64550*.5/8%                   
+                    Jahangir     	                                  55328*.5/8%
+                    Imran Arif		                   57633*.5/8%
+               Irfan Ahmad	                   55328*.5/8%                            Tahir                                              39191*.5/8%                      Wahid                                            57633*.5/8%                   
+Class IV    Daroodan 	          	             53023*1.45/14%        
+     Quresha                   	             55328*1.45/14%
+     Seema   	    	             53023*1.45/14%
+     Rekha           		             48412*1.45/14%
+     Pammi              	             53023*1.45/14%
+     Sunny	             	             55328*1.45/14%
+     Rishi                                         46107*1.45/14%
+     Aneesa         	                           34580*1.45/14% 
+     Rakesh	                           40717*1.45/14%
+                   Shashi	                           40717*1.45/14%
+     Sajid Ali	                           53023*1.45/14%
+                    Akram         	                           43801*1.45/14%
+	      Sajan         	                           46107*1.45/14%
+	      Gurmeet     	                           55328*1.45/14%
+
+
+Delivery TDA                       213900/-+400/-=214300/-
+Dr.Tareque                           48900*10%,400*5%,0*15%         
+Dr.Manju                         56500*10%,0*11.25%,0*7.5/%
+Dr.Maryam                                     0*10%,163400*3.75%
+Dr.A.Hai                                           108500*10%,0*3.75%
+Bari                                                                       146400*1%
+Tahira                         4500*1.5%,400*1.5/3%,44600*1%
+111075*3/28% 
+Meraj                        11500*1.5%,63200*1%,400*1.5/3%
+100767*3/28%  
+Perwaiz                   37000*1%,46700*1/2%,24100*1/3%
+Tajammul                42700*1%,3000*1/2%,13000*1/3%
+Aleem                        7000*1%,32200*1/2%,10100*1/3%                                                                                                                                                                                                                      Pooja                     4000*1%,10000*1/3%,115989*3/28% 
+Davinder                                      56700*1%,96228*3/28%
+Jasbir                    11500*1.5%,69700*1%,46989*3/28%
+Amarjit                                      49600*1%,110975*3/28%
+Paramjit Riar      9000*1%,11000*1/3%,163514*3/28% 
+Sulakhni                 4500*1.5%,39500*1%,55403*3/28% 
+Nazma K                  11100*1%,11500*1/2%,3000*1/3%
+Rupinder Riar                            5000*1%,140282*3/28%
+Manjit                                        26000*1%,111635*3/28%
+Rupinderjit Buttar                                        0*3/28% 
+Sarabjit                                      15900*1%,129382*3/28%
+Gurwinder                             10000*1/3%,119989*3/28% 
+Harpreet Happy                   10100*1/3%,112242*3/28%
+Heena                    4500*1%,11400*1/2%,137028*3/28%
+Asfa Begum                                6000*1%,185160*3/28%
+Reema                   4000*1%,11000*1/3%,122635*3/28% 
+Manjinder                                                     137635*3/28% 
+Amanpreet                                                    175867*3/28%
+Rajwant                                                           91757*3/28%
+Rajwinder T                                                 145282*3/28%
+Manjit Riar                                                     84110*3/28%
+Luxmi                   5000*1%,11400*1/2%,151821*3/28%
+Rubina                   400*1.5/3%,6000*1%,131235*3/28% 
+Sahzia                                                             175867*3/28%
+Pooja Masih                                5000*1%,140282*3/28% 
+Amtus Saboor                                              137635*3/28% 
+Amtush Shakoor                       4500*1%,133135*3/28% 
+Dr. Abdul Majid  	                                 214300*.05%
+S.Guard            Lateef	                                99403*.5/8%
+Mukhtar	              99403*.5/8%
+Tahir Mumtaz	            214100*.5/8%
+Jahangir 	             183514*.5/8%
+Imran Arif  	             191160*.5/8%
+Irfan Ahmad  	             183514*.5/8%
+Tahir                     129989*.5/8%  
+Wahid                               191160*.5/10%                        
+Class IV	Daroodan	          175867*1.45/14%
+Quresha        	        183514*1.45/14%
+Seema    	        175867*1.45/14%
+Rekha                       160575*1.45/14%
+Pammi          	      175867*1.45/14%
+Sunny                           183514*1.45/14%
+Rishi                           152928*1.45/14%
+Aneesa	                         114696*1.45/14%
+Rakesh	                         168221*1.45/14%
+                   	Shashi	                         168221*1.45/14%
+Sajid Ali	          175867*1.45/14%
+Akram              	       145282*1.45/14%
+Sajan              	       152928*1.45/14%
+Gurmeet          	       183514*1.45/14%
+
+
+Eye operations TDA  5000/-
+                            Perwaiz                         5000*3%,0*3/2%   
+             Tajammul                                    5000*3%
+Dr. Abdul Majid   	                                     5000*.05%                                                                                        
+Class IV	Daroodan         	               5000*1.95/14%
+Quresha          	               5000*1.95/14%
+Seema                               2000*1.95/14%
+Rekha 	                             5000*1.95/14%
+Pammi      	               5000*1.95/14%
+Sunny                               5000*1.95/14%
+Rishi                                  5000*1.95/14%
+Aneesa 	               2000*1.95/14%     
+Rakesh	                             5000*1.95/14%
+Shashi	                             0*1.95/14%  
+Sajid Ali	               5000*1.95/14%
+Akram                              3000*1.95/14%
+Sajan 	                             5000*1.95/14%     
+Gurmeet                           5000*1.95/14%     
+
+
+Laboratory  TDA  485340/-
+A.Hadi                                                              450672*.50%
+Swaleh                                                              416005*.50%
+Faiz Ahmad   			                  381338*.40%
+Sandeepa                        	                                 398672*.25%
+Sukhwinder R                              	                  329337*.20%
+Paramjit Pawan                                             398672*.15%
+Mansha                              	                  416005*.15%
+Sarah Naaz                            	                  398672*.10%
+Shabnam Ara                            	                  381338*.10%
+Bushra Shakir                            	                  398672*.10%
+Dr. Abdul Majid                        	                  485340*.05%
+Class IV 	Daroodan                         398672*.5/14%
+Quresha                           416005*.5/14%
+Seema              	               398672*.5/14%
+Rekha             	               364005*.5/14%
+Pammi       	               398672*.5/14%
+Sunny                               416005*.5/14%
+Rishi                   	               346671*.5/14%
+Aneesa	                             260003*.5/14%
+Rakesh	                             381338*.5/14%
+Shashi	                             381338*.5/14%
+Sajid Ali	               398672*.5/14%
+Akram   	               329337*.5/14%
+Sajan   	                             346671*.5/14%
+Gurmeet   	               416005*.5/14%
+
+
+Miscellaneous  TDA  6500/-
+Dr.Tareque                  	                    600*15%,4000*18%
+Dr.Maryam                  	                           0*15%,100*18%
+
+	X-Ray & C-Arm  TDA        97750+0=97750/-                                          
+Dr. Tariq (C-Arm)                                                   0*6%
+Ainul         	                                                    38401*1%
+Azharuddin     	                                                    62839*1%
+Mufi         	                                                 38401*.25%
+Dr. Abdul Majid                     	                    97750*.05%
+Class IV	Daroodan    	                 80294*.5/14%
+Quresha          	                 83785*.5/14%
+Seema       	                 80294*.5/14%
+Rekha        	                 73312*.5/14%
+Pammi          	                 80294*.5/14%
+Sunny       	                 83785*.5/14%
+Rishi        	                 69821*.5/14%
+Aneesa	                               52366*.5/14%
+Rakesh	                               76803*.5/14%
+Shashi	                               76803*.5/14%
+Sajid Ali	                 80294*.5/14%
+Akram                                66330*.5/14%
+Sajan                                   69821*.5/14%
+Gurmeet                             83785*.5/14%
+
+
+OPD  TDA  360310/-
+Dr.Tareque                                                           55680*8%
+Dr.Mahmood Butt                                              39850*8%
+Dr.Manju Butt                                                     45200*8%
+Dr.Hafeez                                                              77600*8%
+Dr.Imran        	   	                                      30910*8%                                                                  
+Dr.Maryam         		                        33910*8%
+Dr.Amtul Hai         		                        36960*8%
+Reception Clerk Mansoor                        244496*2.2/7%
+   Aamir                            257364*2.2/7%
+	                 Mahboob	               244496*2.2/7%
+   Ruby                              218759*2.2/7%
+   Afzal                               270232*2.2/7%
+   Monika                          283100*2.2/7%
+   Danish                           283100*2.2/7%
+OPD Nurses:-	  Nazma K                           321705*1/3%
+Nazma P                            205891*1/3%
+Baljit                                     38604*1/3%
+Other Nurses:-   Sarabjit	               244496*.6/18%                            
+Gurwinder                      218759*.6/18%
+Harpreet Happy           205891*.6/18%
+ Heena                               257364*.6/18%
+ Asfa Begum                    321705*.6/18%
+ Reema                             231627*.6/18%   
+               Manjinder                       231627*.6/18%   
+Amanpreet                      295968*.6/18%                                                                                           
+Rajwant                           154418*.6/18%
+Rajwinder T                    244496*.6/18%
+Serina                               295968*.6/18%
+Manjit                               141550*.6/18%
+Luxmi                               283100*.6/18%
+Rubina                              231627*.6/18%
+Shazia                               295968*.6/18%
+Pooja Masih                    244496*.6/18%
+Amtus Saboor                270232*.6/18%
+Amtush Shakoor            231627*.6/18%
+Dr. Abdul Majid                  360310*.2%
+
+
+Indoor  TDA    84050/-
+Dr.Tareque      		                                      35700*8%
+Dr.Mahmood			                          5450*8%
+Dr.Manju			                          9800*8%
+Dr.Maryam		                                        1700*8%
+Dr.Amatul Hai		                                      31400*8%
+Nurses:-	Tahira		               63037*3.2/28%
+Meraj	                             69041*3.2/28%
+Pooja     	               51030*3.2/28%
+Dawinder 	               60035*3.2/28%
+Jasbir                                51030*3.2/28%
+Amarjit             	               63037*3.2/28%
+Pramjit Riar                   72042*3.2/28%
+Sulakhni                           39023*3.2/28%
+Rupinder Riar                57033*3.2/28%
+Manjit  	               54032*3.2/28%
+Rupinder Buttar              0*3.2/28%
+Sarabjit        	               57033*3.2/28%
+Gurwinder                      51030*3.2/28% 
+Harpreet Happy            48028*3.2/28%                 
+Heena                                60035*3.2/28%                 
+Asfa                                   75044*3.2/28%                 
+Reema                              54032*3.2/28%                 
+Manjinder Kaur            54032*3.2/28%
+Amanpreet                      69041*3.2/28%
+Rajwant                           36021*3.2/28%
+Rajwinder Tatla            57033*3.2/28% 
+Manjit Riar                     33019*3.2/28%
+Luxmi                               66039*3.2/28%
+Rubina                              54032*3.2/28%
+Shazia Begum                 69041*3.2/28%
+Pooja Masih                    57033*3.2/28%
+Amtus Saboor                63037*3.2/28%
+Amtush Shakoor            54032*3.2/28%
+Dr. Abdul Majid             	                    84050*.05%
+Class IV	Daroodan                         69041*.75/14%
+Quresha                           72042*.75/14%
+Seema                               69041*.75/14%
+Rekha               	               63037*.75/14%
+Pammi                              69041*.75/14%
+Sunny                               72042*.75/14%
+Rishi                                  60035*.75/14%
+Aneesa	                             45026*.75/14%
+Rakesh	                             66039*.75/14%
+Shashi	                             66039*.75/14%
+Sajid Ali	               69041*.75/14%
+Akram                              57033*.75/14%
+Sajan                                 60035*.75/14%
+Gurmeet                          72042*.75/14%
+
+
+ENT  TDA   75350/-
+Dr.Hafeez                                                              75350*8%
+Baljit                  	   	                                        5250*2%
+Gurwinder                  	   	                        13125*2%
+Happy                  	   	                          3600*2%
+Heena                  	   	                          1750*2%
+Reema              	   	                                        6350*2%
+Rajwant                  	   	                          2975*2%
+Lakshmi                  	                                        7925*2%
+Shazia          	   	                                      26150*2%
+Dr. Abdul Majid                                              75350*.05%
+Class IV	Daroodan        	               61894*.95/14%
+Quresha 	               64585*.95/14%
+Seema                               61894*.95/14%
+Rekha 		               56512*.95/14%
+Pammi                              61894*.95/14%
+Sunny                               64585*.95/14%
+Rishi                                  53821*.95/14%
+Aneesa	                             40366*.95/14%
+Rakesh	                             59203*.95/14%
+Shashi	                             59203*.95/14%
+Sajid Ali	               61894*.95/14%
+Akram                              51130*.95/14%
+Sajan                                 53821*.95/14%
+Gurmeet	               64585*.95/14%
+
+
+USG  TDA  160400/-
+Dr.Tareque                                                         160400*6%
+Nazma K                                         16650*2%,106800*1%
+Nazma P                                                              115050*2%
+Sarabjit                                                27750*2%,7950*1%
+Happy                                                                    26400*2%
+Heena                                                                     51300*2%
+Asfa                                                                         20850*2%
+Amanpreet                                                              4300*1%
+Rajwant                                                                 15300*2%                              Serina                                                 31050*2%,32400*1%                              Manjit Riar                                                           15950*2%
+Dr. Abdul Majid                                            160400*.05%
+Class IV	Daroodan        	             131757*.95/14%
+Quresha 	             137485*.95/14%
+Seema                             131757*.95/14%
+Rekha 		             120300*.95/14%
+Pammi                            131757*.95/14%
+Sunny                             137485*.95/14%
+Rishi                                114571*.95/14%
+Aneesa	                             85928*.95/14%
+Rakesh	                           126028*.95/14%
+Shashi	                           126028*.95/14%
+Sajid Ali	             131757*.95/14%
+Akram                            108842*.95/14%
+Sajan                               114571*.95/14%
+Gurmeet	             137485*.95/14%
+
+
+ECG/TMT  TDA     32400/-
+Dr.Tareque                                                             9800*6%
+Dr.Mahmood                                                         9400*6%
+Dr.Manju Butt                                                       1600*6%
+Dr.Hafeez                                                                  800*6%
+Dr.Maryam                                                            1800*6%
+Dr.A.Hai                                                   	           7200*6%
+Tahira	              	                                                       1000*2%
+Meraj	              	                                                       1400*2%
+Dawnider		              	                          2200*2%
+Amarjeet                                                                    400*2%
+Sulakhni		              	                            400*2%
+Nazma k	              	                                        1200*2%
+Rup Riar                                                                  2000*2%
+Sarabjit		              	                          1000*2%
+Gurwinder		                                          800*2%
+Harpreet Happy		                            600*2%
+Heena	              	                                                       1000*2%
+Asfa		              	                                        1000*2%
+Reema                                                                        800*2%
+Manjinder	              	                                          600*2%
+Amanpreet		              	                          1000*2%
+Rajwant		              	                            400*2%
+Manjit Riar		              	                            800*2%
+Lakshmi	              	                                        3400*2%
+Shazia                                                                       1200*2%
+Pooja Masih	              	                                          600*2%
+Amtus Saboor	              	                                        1000*2%
+Ainul		              	                                        2000*2%
+Mofi                                                                            600*2%
+Azhar                                                                        7000*2%
+Dr. Abdul Majid                                              32400*.05%
+Class IV	Daroodan        	               26614*.95/14%
+Quresha 	               27771*.95/14%
+Seema                               26614*.95/14%
+Rekha 		               24300*.95/14%
+Pammi                              26614*.95/14%
+Sunny                               27771*.95/14%
+Rishi                                  23142*.95/14%
+Aneesa	                             17357*.95/14%
+Rakesh	                             25457*.95/14%
+Shashi	                             25457*.95/14%
+Sajid Ali	               26614*.95/14%
+Akram                              21985*.95/14%
+Sajan                                 23142*.95/14%
+Gurmeet	               27771*.95/14%
+
+
+
+Dental TDA   383640/-
+Dr.A. H. Imran                                                  366690*6%
+Rubeena 		                                   68290*3/6%  
+Munawwara 		                                   73790*3/6%  
+Rashda 		                                   63590*3/6%  
+Rajkumari                                                         75760*3/6%  
+Salma Fareed Naila                                         36835*3/6%  
+Sweety                                                                 65225*3/6%  
+Dr. Abdul Majid                                            383640*.05%
+    Class IV	Daroodan        	             315132*.95/14%
+Quresha 	             328834*.95/14%
+Seema                             315132*.95/14%
+Rekha 		             287730*.95/14%
+Pammi                            315132*.95/14%
+Sunny                             328834*.95/14%
+Rishi                                274028*.95/14%
+Aneesa	                           205521*.95/14%
+Rakesh	                           301431*.95/14%
+Shashi	                           301431*.95/14%
+Sajid Ali	             315132*.95/14%
+Akram                            260327*.95/14%
+Sajan                               274028*.95/14%
+Gurmeet	             328834*.95/14%
+
+
+
+Pharmacist  TDA  2343313-13%=2038682
+Taufiq Ahmad		                           1529011*.65/5%
+Shujauddin	                                         1601821*.65/5%
+Mahmud Muzammil	                           1674631*.65/5%
+A.Rehman		                             655290*.65/5%
+Syed Mahmood 	                           1529011*.65/5%
+Abdul Mohsin		                              1820251*.14%
+Tahira Saba                                                  1529011*.12%
+Khadeeja                                                    1674631*.54/8%
+Hamda                                                        1747441*.54/8%
+Sumaida                                                     1456201*.54/8%
+Rofiza                                                          0*.54/8%
+Fauzia                                                          1310581*.54/8%
+Neha Parveen                                            167463*.54/8%
+Niyamatun Yasmin                                 1601821*.54/8%
+Sameena Munawwar                              1383391*.54/8%
+Mubarak                                                       1747441*.05%
+
+Physiotherapy  TDA  11700-10000=1700
+Aaradhna Bulbul Haq                            1700*3.75%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pharmacy  TDA     0/-
+A.Mohsin		                              0*.18%
+Taufiq Ahmad		                              0*.18%
+Mahmud Muzammil	                              0*.18%
+Shujauddin	                                             0*.18%
+A.Rehman		                               0*.18%
+Syed Mahmood 	                              0*.18%
+
+
+Dy.Administrator   	                              0*.07%
+T.Saba			                              0*.12%
+Khadeeja		                              0*.05%
+Hamda	                                                           0*.05%
+Sumeda	                                             0*.05%    
+Rofiza	                                                            0*.05%    
+Accountant		                              0*.02%
+Imp.Clerk		                                 0*.02%
+S.Guard	Aziz                             0*.022/11%
+Haqiqat                        0*.022/11%
+Lateef                         0*.022/11%
+Mukhtar                    0*.022/11%
+Tahir                            0*.022/11%
+Mubarak                   0*.022/11%
+Jahangir                    0*.022/11%
+Imran Arif                0*.022/11%
+Irfan Ahmad            0*.022/11%
+Tahir                           0*.022/11%                                       Wahid                          0*.022/11%                   
+Class IV	Nizamuddin                0*.08/13%
+Daroodan         	          0*.08/13%
+Quresha                         0*.08/13%
+Seema         	          0*.08/13%
+Rekha                           0*.08/13%
+Pammi                          0*.08/13%
+Sunny                           0*.08/13%
+Rishi                             0*.08/13%
+Sajan                            0*.08/13%
+Rajan                            0*.08/13%
+Aneesa	                         0*.08/13%
+Rakesh	                         0*.08/13%
+Shashi	                         0*.08/13%
+
+Driver               	Mansoor                            0*.01%
+
+
+
+
+                                                                                                                                                                                                           
+Present Share Calculation Formula
+(w.e.f Ist June 2017)
+
+Category-I
+
+If Dr. Maryam has not assisted
+
+Assisstant Nurses 		      6% + 1.5%
+      (As before)
+Rest of nurses		      7% 
+      (all nurses)
+Accountant 			      0.5%
+Sweepers			      1.5%
+Security Staff		      1%
+
+
+Category-II
+
+If Dr. Maryam assists
+
+Assisstant Nurses 		      3% + 1.5%
+Rest of nurses		      2.5% 
+      (all nurses)
+Accountant 			      0.5%
+Sweepers			      1.5%
+Security Staff		      1%
+
+Under Resolution Of Managing Committee Noor Hospital No.48/17.07.2019 In Dental Section the qualified technicians will be given 3% share and Non Qualified 1.5% on Income.
+ 

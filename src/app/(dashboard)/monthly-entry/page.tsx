@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { CalendarPlus, Save, Users, X, CheckSquare, Square } from 'lucide-react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+import { CalendarPlus, Save, Users, X, CheckSquare, Square, BookOpen, Lock, Unlock } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Department, DailyIncome, StaffLeave, Staff } from '@/lib/types';
+import type { Department, DailyIncome, StaffLeave, Staff, DepartmentRule } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
 
 function getDaysInMonth(year: number, month: number): number {
@@ -27,24 +27,32 @@ export default function MonthlyEntryPage() {
   const [incomes, setIncomes] = useState<Record<string, IncomeState>>({});
   const [leavesByDate, setLeavesByDate] = useState<Record<string, Set<string>>>({});
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [globalStaffList, setGlobalStaffList] = useState<Staff[]>([]);
+  const [staffAmounts, setStaffAmounts] = useState<Record<string, string>>({});
+  const [deptTotalAmount, setDeptTotalAmount] = useState<string>('');
 
-  const [subDepartments, setSubDepartments] = useState<Department[]>([]);
-  const [subDeptStaff, setSubDeptStaff] = useState<Staff[]>([]);
-  const [workEntries, setWorkEntries] = useState<Record<string, Record<string, number>>>({});
+  // Rules State
+  const [deptRules, setDeptRules] = useState<DepartmentRule[]>([]);
+  const [appliedMainRules, setAppliedMainRules] = useState<string[]>([]);
+  const [isLocked, setIsLocked] = useState(false);
+
+  // Addon State
+  const [addons, setAddons] = useState<any[]>([]);
+  const [addonStaffMap, setAddonStaffMap] = useState<Record<string, Staff[]>>({});
+  const [addonRulesMap, setAddonRulesMap] = useState<Record<string, DepartmentRule[]>>({});
 
   // Modal State
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [tempSelection, setTempSelection] = useState<Set<string>>(new Set());
-  const [tempWorkEntries, setTempWorkEntries] = useState<Record<string, string>>({});
   const [modalSaving, setModalSaving] = useState(false);
 
   const totalDays = getDaysInMonth(year, month);
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
 
   const fetchDepartments = async () => {
-    const res = await fetch('/api/departments');
+    const res = await fetch('/api/departments', { cache: 'no-store' });
     const data = await res.json();
-    setDepartments(data.filter((d: Department) => d.is_active && !d.is_sub_department));
+    setDepartments(data.filter((d: Department) => d.is_active));
   };
 
   const loadData = useCallback(async () => {
@@ -52,48 +60,110 @@ export default function MonthlyEntryPage() {
       setIncomes({});
       setLeavesByDate({});
       setStaffList([]);
-      setWorkEntries({});
       return;
     }
     setLoading(true);
     
     try {
-      // 1. Load Primary Staff
-      const staffRes = await fetch(`/api/staff?department_id=${selectedDept}`);
+      // ── BATCH 1: Fetch ALL independent data in parallel (was 7+ sequential calls → 1 batch) ──
+      const [dtRes, staffRes, saRes, addonRes, rulesRes, inRes, lvRes] = await Promise.all([
+        fetch(`/api/monthly-totals?department_id=${selectedDept}&month=${monthStr}`),
+        fetch(`/api/staff`),
+        fetch(`/api/monthly-staff-amounts?department_id=${selectedDept}&month=${monthStr}`),
+        fetch(`/api/monthly-addons?department_id=${selectedDept}&month=${monthStr}`),
+        fetch(`/api/rules?department_id=${selectedDept}`),
+        fetch(`/api/daily-income?department_id=${selectedDept}&month=${monthStr}`),
+        fetch(`/api/leaves?month=${monthStr}`),
+      ]);
+
+      // Process Dept Total Amount
+      if (dtRes.ok) {
+        const dtData = await dtRes.json();
+        setDeptTotalAmount(dtData?.total_amount ? dtData.total_amount.toString() : '');
+        setAppliedMainRules(dtData?.applied_rules || []);
+        setIsLocked(!!dtData?.is_locked);
+      } else {
+        setDeptTotalAmount('');
+        setAppliedMainRules([]);
+        setIsLocked(false);
+      }
+
+      // Process Staff
       const staffData = await staffRes.json();
-      const activeStaff = Array.isArray(staffData) ? staffData.filter(s => s.is_active) : [];
-      setStaffList(activeStaff);
+      const allActiveStaff = Array.isArray(staffData) ? staffData.filter(s => s.is_active) : [];
+      setGlobalStaffList(allActiveStaff);
 
-      // 1a. Load Sub-Departments and their Staff
-      const allDeptsRes = await fetch(`/api/departments`);
-      const allDepts = await allDeptsRes.json();
-      const subDepts = allDepts.filter((d: Department) => d.is_sub_department && d.is_active);
-      setSubDepartments(subDepts);
-      
-      const allStaffRes = await fetch(`/api/staff`);
-      const allStaffData = await allStaffRes.json();
-      const crossStaff = allStaffData.filter((s: Staff) => 
-        s.is_active && subDepts.some((sd: Department) => sd.id === s.department_id)
-      );
-      setSubDeptStaff(crossStaff);
-
-      // 1b. Load Work Entries (Manual Entries) for this department and month
-      const weRes = await fetch(`/api/work-entries?department_id=${selectedDept}&month=${monthStr}`);
-      const weData = await weRes.json();
-      const loadedEntries: Record<string, Record<string, number>> = {};
-      
-      if (Array.isArray(weData)) {
-        weData.forEach((w: any) => {
-          if (!loadedEntries[w.date]) loadedEntries[w.date] = {};
-          loadedEntries[w.date][w.staff_id] = w.amount;
+      // Process Staff Amounts
+      const saData = await saRes.json();
+      const newStaffAmounts: Record<string, string> = {};
+      const savedStaffIds = new Set<string>();
+      if (Array.isArray(saData)) {
+        saData.forEach((sa: any) => {
+          newStaffAmounts[sa.staff_id] = sa.amount.toString();
+          savedStaffIds.add(sa.staff_id);
         });
       }
-      setWorkEntries(loadedEntries);
+      setStaffAmounts(newStaffAmounts);
 
-      // 2. Load Incomes config for the month
-      const inRes = await fetch(`/api/daily-income?department_id=${selectedDept}&month=${monthStr}`);
-      const inData = await inRes.json();
+      // Process Addons
+      let loadedAddons: any[] = [];
+      if (addonRes.ok) {
+        const addonData = await addonRes.json();
+        loadedAddons = Array.isArray(addonData) ? addonData : [];
+        setAddons(loadedAddons);
+      }
+
+      // Process Rules
+      if (rulesRes.ok) {
+        const rulesData = await rulesRes.json();
+        const activeRules = Array.isArray(rulesData) ? rulesData.filter((r: DepartmentRule) => r.is_active) : [];
+        setDeptRules(activeRules);
+        setAppliedMainRules(prev => prev.length === 0 ? activeRules.map(r => r.id) : prev);
+      } else {
+        setDeptRules([]);
+      }
+
+      // ── BATCH 2: Fetch addon department staff & rules in parallel (was sequential loop) ──
+      const addonDeptIds = loadedAddons.filter(a => a.addon_department_id).map(a => a.addon_department_id);
+      const addonPromises = addonDeptIds.map(addonDeptId => 
+        Promise.all([
+          fetch(`/api/staff?department_id=${addonDeptId}`),
+          fetch(`/api/rules?department_id=${addonDeptId}`),
+        ]).then(async ([sRes, rRes]) => {
+          const sData = sRes.ok ? await sRes.json() : [];
+          const rData = rRes.ok ? await rRes.json() : [];
+          return {
+            deptId: addonDeptId,
+            staff: Array.isArray(sData) ? sData.filter((s: Staff) => s.is_active) : [],
+            rules: Array.isArray(rData) ? rData.filter((r: DepartmentRule) => r.is_active) : [],
+          };
+        })
+      );
+      const addonResults = await Promise.all(addonPromises);
       
+      const newAddonStaffMap: Record<string, Staff[]> = {};
+      const newAddonRulesMap: Record<string, DepartmentRule[]> = {};
+      for (const result of addonResults) {
+        newAddonStaffMap[result.deptId] = result.staff;
+        newAddonRulesMap[result.deptId] = result.rules;
+      }
+      setAddonStaffMap(newAddonStaffMap);
+      setAddonRulesMap(newAddonRulesMap);
+
+      // Build filtered staff list
+      const baseStaff = allActiveStaff.filter(s => {
+        const ids = s.department_ids || [s.department_id];
+        return ids.includes(selectedDept) || savedStaffIds.has(s.id);
+      });
+      const addonIdSet = new Set(addonDeptIds);
+      const filteredStaff = baseStaff.filter((s: Staff) => {
+        const ids = s.department_ids || [s.department_id];
+        return !ids.some(id => addonIdSet.has(id));
+      });
+      setStaffList(filteredStaff);
+
+      // Process Incomes
+      const inData = await inRes.json();
       const newIncomes: Record<string, IncomeState> = {};
       if (Array.isArray(inData)) {
         inData.forEach((d: DailyIncome) => {
@@ -107,10 +177,8 @@ export default function MonthlyEntryPage() {
       }
       setIncomes(newIncomes);
 
-      // 3. Load Leaves
-      const lvRes = await fetch(`/api/leaves?department_id=${selectedDept}&month=${monthStr}`);
+      // Process Leaves
       const lvData = await lvRes.json();
-      
       const newLeaves: Record<string, Set<string>> = {};
       if (Array.isArray(lvData)) {
         lvData.forEach((lv: StaffLeave) => {
@@ -124,7 +192,7 @@ export default function MonthlyEntryPage() {
     }
     
     setLoading(false);
-  }, [selectedDept, monthStr, addToast]);
+  }, [selectedDept, monthStr, addToast, departments]);
 
   useEffect(() => { fetchDepartments(); }, []);
   useEffect(() => { loadData(); }, [loadData]);
@@ -145,31 +213,93 @@ export default function MonthlyEntryPage() {
     if (!selectedDept) return;
     setSaving(true);
     
+    const isStaffBased = departments.find(d => d.id === selectedDept)?.calculation_method === 'staff_based';
+
     try {
-      const recordsToSave = [];
-      for (let day = 1; day <= totalDays; day++) {
-        const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
-        const state = incomes[dateStr] || { amount: 0, present_staff_ids: null };
-        recordsToSave.push({
-          department_id: selectedDept,
-          date: dateStr,
-          amount: state.amount,
-          present_staff_ids: state.present_staff_ids
+      if (isStaffBased) {
+        const entriesToSave = staffList.map(staff => {
+          const amt = parseFloat(staffAmounts[staff.id]) || 0;
+          return {
+            staff_id: staff.id,
+            amount: amt,
+            distribution_type: undefined,
+            percentage: null
+          };
         });
+        
+        const res = await fetch('/api/monthly-staff-amounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            department_id: selectedDept,
+            month: monthStr,
+            entries: entriesToSave
+          }),
+        });
+
+        if (res.ok) {
+          addToast('success', 'Monthly staff amounts saved successfully');
+          loadData();
+        } else {
+          throw new Error('Failed to save staff amounts');
+        }
+      } else {
+        // Save daily income records
+        const recordsToSave = [];
+        for (let day = 1; day <= totalDays; day++) {
+          const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
+          const state = incomes[dateStr] || { amount: 0, present_staff_ids: null };
+          recordsToSave.push({
+            department_id: selectedDept,
+            date: dateStr,
+            amount: state.amount,
+            present_staff_ids: state.present_staff_ids
+          });
+        }
+
+        const res = await fetch('/api/monthly-income', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recordsToSave),
+        });
+
+        if (res.ok) {
+          addToast('success', 'Monthly entry saved successfully');
+          loadData();
+        } else {
+          throw new Error('Failed to save');
+        }
       }
 
-      const res = await fetch('/api/monthly-income', {
+      // Save Addon Config (with applied_rules and without calculation_type)
+      await fetch('/api/monthly-addons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recordsToSave),
+        body: JSON.stringify({
+          department_id: selectedDept,
+          month: monthStr,
+          addons: addons.filter(a => a.addon_department_id && a.percentage > 0).map(a => ({
+            addon_department_id: a.addon_department_id,
+            percentage: a.percentage,
+            attendance_rule: a.attendance_rule || 'none',
+            applied_rules: a.applied_rules || []
+          }))
+        })
       });
 
-      if (res.ok) {
-        addToast('success', 'Monthly entry saved successfully');
-        loadData();
-      } else {
-        throw new Error('Failed to save');
-      }
+      // Save Dept Total Amount and Applied Rules
+      await fetch('/api/monthly-totals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          department_id: selectedDept,
+          month: monthStr,
+          total_amount: parseFloat(deptTotalAmount) || 0,
+          applied_rules: appliedMainRules,
+          is_locked: isLocked
+        })
+      });
+
     } catch (err) {
       addToast('error', 'An error occurred while saving.');
     }
@@ -177,8 +307,59 @@ export default function MonthlyEntryPage() {
     setSaving(false);
   };
 
-  const deptName = departments.find(d => d.id === selectedDept)?.name || '';
+  const handleStaffAmountChange = (staffId: string, val: string) => {
+    setStaffAmounts(prev => ({
+      ...prev,
+      [staffId]: val
+    }));
+  };
+
+  const changeAttendanceRule = async (rule: 'daily' | 'monthly' | 'none', deptIdOverride?: string) => {
+    const targetId = deptIdOverride || selectedDept;
+    if (!targetId) return;
+    try {
+      const res = await fetch(`/api/departments/${targetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendance_rule: rule })
+      });
+      if (res.ok) {
+        addToast('success', 'Attendance rule updated');
+        fetchDepartments();
+      } else {
+        addToast('error', 'Failed to update');
+      }
+    } catch {
+      addToast('error', 'Failed to update');
+    }
+  };
+
+  const changeIncomeType = async (method: 'income' | 'staff_based') => {
+    if (!selectedDept) return;
+    try {
+      const res = await fetch(`/api/departments/${selectedDept}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calculation_method: method })
+      });
+      if (res.ok) {
+        addToast('success', 'Income type updated');
+        fetchDepartments();
+      } else {
+        addToast('error', 'Failed to update');
+      }
+    } catch {
+      addToast('error', 'Failed to update');
+    }
+  };
+
+  const selectedDepartmentData = departments.find(d => d.id === selectedDept);
+  const deptName = selectedDepartmentData?.name || '';
+  const attendanceRule = selectedDepartmentData?.attendance_rule || 'daily';
+  const isStaffBased = selectedDepartmentData?.calculation_method === 'staff_based';
+  const isMonthlyBased = attendanceRule === 'monthly';
   const totalIncome = Object.values(incomes).reduce((sum, val) => sum + (val?.amount || 0), 0);
+  const totalStaffAmount = Object.values(staffAmounts).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
 
   // Modal Handlers
   const openModal = (dateStr: string) => {
@@ -192,19 +373,7 @@ export default function MonthlyEntryPage() {
       setTempSelection(new Set(defaultPresent));
     }
 
-    // Populate existing manual entries for sub-dept staff on this date
-    const dayEntries = workEntries[dateStr] || {};
-    const tempWe: Record<string, string> = {};
-    Object.keys(dayEntries).forEach(staffId => {
-      tempWe[staffId] = dayEntries[staffId].toString();
-    });
-    setTempWorkEntries(tempWe);
-
     setEditingDate(dateStr);
-  };
-
-  const handleWorkEntryChange = (staffId: string, val: string) => {
-    setTempWorkEntries(prev => ({ ...prev, [staffId]: val }));
   };
 
   const toggleStaff = (id: string) => {
@@ -246,47 +415,7 @@ export default function MonthlyEntryPage() {
       }
     }));
 
-    // 2. Save work entries (cross-department) — these are separate and must persist immediately
-    const entriesToSave = [];
-    for (const staffId of Object.keys(tempWorkEntries)) {
-      const val = parseFloat(tempWorkEntries[staffId]);
-      if (!isNaN(val) && val > 0) {
-        entriesToSave.push({
-          staff_id: staffId,
-          department_id: selectedDept,
-          date: editingDate,
-          description: 'Cross-Department Share',
-          amount: val,
-          percentage: '0'
-        });
-      }
-    }
-
-    if (entriesToSave.length > 0) {
-      try {
-        const res = await fetch('/api/work-entries/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            department_id: selectedDept,
-            date: editingDate,
-            entries: entriesToSave
-          }),
-        });
-
-        if (res.ok) {
-          const newDayRecord: Record<string, number> = {};
-          entriesToSave.forEach(e => { newDayRecord[e.staff_id] = e.amount; });
-          setWorkEntries(prev => ({ ...prev, [editingDate]: newDayRecord }));
-        } else {
-          addToast('error', 'Failed to save manual work entries.');
-        }
-      } catch (e) {
-        addToast('error', 'Failed to save manual work entries.');
-      }
-    }
-
-    // 3. Sync Attendance (Leave) based on selection
+    // Sync Attendance (Leave) based on selection
     const leavesPayload = staffList.map(staff => ({
       staff_id: staff.id,
       department_id: selectedDept,
@@ -376,6 +505,639 @@ export default function MonthlyEntryPage() {
         </div>
       </div>
 
+      {selectedDept && (
+        <div className="glass-card mb-6" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <span style={{ color: '#10b981' }}>💰</span> Total Department Income
+            </h3>
+            <button
+              onClick={async () => {
+                const newLocked = !isLocked;
+                setIsLocked(newLocked);
+                try {
+                  await fetch('/api/monthly-totals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      department_id: selectedDept,
+                      month: monthStr,
+                      total_amount: parseFloat(deptTotalAmount) || 0,
+                      applied_rules: appliedMainRules,
+                      is_locked: newLocked
+                    })
+                  });
+                  addToast('success', newLocked ? `🔒 ${deptName} locked — batch calculations will skip this department.` : `🔓 ${deptName} unlocked.`);
+                } catch {
+                  setIsLocked(!newLocked);
+                  addToast('error', 'Failed to update lock status');
+                }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                border: isLocked ? '2px solid #f59e0b' : '1px solid rgba(71, 85, 105, 0.3)',
+                background: isLocked ? 'rgba(245, 158, 11, 0.15)' : 'rgba(15, 23, 42, 0.5)',
+                color: isLocked ? '#fbbf24' : '#94a3b8',
+                cursor: 'pointer', transition: 'all 0.2s ease',
+                textTransform: 'uppercase', letterSpacing: '0.5px'
+              }}
+            >
+              {isLocked ? <Lock size={14} /> : <Unlock size={14} />}
+              {isLocked ? 'Locked' : 'Unlocked'}
+            </button>
+          </div>
+          {isLocked && (
+            <div style={{
+              padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+              background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)'
+            }}>
+              <p style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 600, margin: 0 }}>
+                🔒 This department is locked. Its calculations will be preserved when running batch "Calculate All" operations.
+              </p>
+            </div>
+          )}
+          <p className="text-xs text-slate-400 mb-4">Enter the total department income for the month. All percentage rules will be applied on this amount. Add-on departments will also receive their share from this total.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="form-label text-xs">Total Department Amount (₹)</label>
+              <input 
+                type="number"
+                min="0"
+                step="0.01"
+                className="input-field"
+                value={deptTotalAmount}
+                onChange={(e) => setDeptTotalAmount(e.target.value)}
+                placeholder="e.g. 50000"
+                style={{ fontSize: '18px', fontWeight: 700, padding: '12px 16px' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Department Rules Summary */}
+      {selectedDept && deptRules.length > 0 && (
+        <div className="glass-card mb-6" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BookOpen size={16} style={{ color: '#60a5fa' }} /> Apply Department Rules for {deptName}
+          </h3>
+          <p className="text-xs text-slate-400 mb-4">Select which rules you want to actively apply to the main department calculation for this month.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+            {deptRules.map(rule => {
+              const matchingStaff = staffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim());
+              const isApplied = appliedMainRules.includes(rule.id);
+              return (
+                <div 
+                  key={rule.id} 
+                  onClick={() => {
+                    setAppliedMainRules(prev => 
+                      prev.includes(rule.id) ? prev.filter(id => id !== rule.id) : [...prev, rule.id]
+                    );
+                  }}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: isApplied ? '2px solid #10b981' : '1px solid rgba(71, 85, 105, 0.3)',
+                    background: isApplied ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.5)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    opacity: isApplied ? 1 : 0.6
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isApplied ? <CheckSquare size={16} style={{ color: '#10b981' }} /> : <Square size={16} style={{ color: '#64748b' }} />}
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
+                        background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.5px'
+                      }}>{rule.role}</span>
+                    </div>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px',
+                      background: rule.distribution_type === 'group' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(96, 165, 250, 0.15)',
+                      color: rule.distribution_type === 'group' ? '#fbbf24' : '#60a5fa'
+                    }}>
+                      {rule.distribution_type === 'group' ? '👥 Group' : '👤 Individual'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: 800, color: '#10b981', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    {rule.percentage}%
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                    {matchingStaff.length > 0 ? (
+                      <span>{matchingStaff.length} local staff: {matchingStaff.map(s => s.name).join(', ')}</span>
+                    ) : globalStaffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id))).length > 0 ? (
+                      <span style={{ color: '#60a5fa' }} title="These staff members receive their share automatically via the External Add-On system.">
+                        {globalStaffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id))).length} staff handled via Add-On System
+                      </span>
+                    ) : (
+                      <span style={{ color: '#ef4444' }}>⚠ No staff assigned globally</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {staffList.filter(s => !deptRules.find(r => r.role.toUpperCase().trim() === s.role.toUpperCase().trim())).length > 0 && (
+            <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              <p style={{ fontSize: '12px', color: '#f87171', fontWeight: 600, margin: 0 }}>
+                ⚠ Unmatched Staff (no rule for their role):
+              </p>
+              <p style={{ fontSize: '12px', color: '#fca5a5', margin: '4px 0 0' }}>
+                {staffList.filter(s => !deptRules.find(r => r.role.toUpperCase().trim() === s.role.toUpperCase().trim())).map(s => `${s.name} (${s.role})`).join(', ')}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Staff-wise Share Breakdown Preview */}
+      {selectedDept && deptRules.length > 0 && staffList.length > 0 && (() => {
+        const tda = parseFloat(deptTotalAmount) || 0;
+        const colCount = isMonthlyBased ? 7 : 6;
+        
+        // Build role counts for group distribution
+        const roleCounts: Record<string, number> = {};
+        staffList.forEach(s => {
+          const rKey = s.role.toUpperCase().trim();
+          roleCounts[rKey] = (roleCounts[rKey] || 0) + 1;
+        });
+
+        // Count off/CL days per staff from leavesByDate
+        const getAbsentDays = (staffId: string): number => {
+          let absent = 0;
+          for (let d = 1; d <= totalDays; d++) {
+            const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+            if (leavesByDate[dateStr]?.has(staffId)) absent++;
+          }
+          return absent;
+        };
+
+        type RowData = { 
+          staff: Staff; 
+          rule: DepartmentRule | null; 
+          pct: number; 
+          distType: string; 
+          estimatedAmount: number; 
+          poolTotal: number; 
+          absentDays: number; 
+          workingDays: number; 
+          section: string;
+          adjustedBase: number;
+          workAmount: number;
+        };
+
+        // === Primary Department Staff ===
+        const primaryRows: RowData[] = staffList.map(s => {
+          const rKey = s.role.toUpperCase().trim();
+          const rule = deptRules.find(r => r.role.toUpperCase().trim() === rKey);
+          const absentDays = getAbsentDays(s.id);
+          const workingDays = totalDays - absentDays;
+
+          if (!rule) return { staff: s, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'primary', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
+          
+          const pct = parseFloat(rule.percentage) || 0;
+          const overridePct = s.department_percentages?.[selectedDept];
+          const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : pct;
+          
+          let amount = 0;
+          let poolTotal = 0;
+          let adjustedBase = tda;
+
+          if (tda > 0) {
+            const ratio = (isMonthlyBased && totalDays > 0) ? (workingDays / totalDays) : 1;
+            adjustedBase = Math.round(tda * ratio * 100) / 100;
+
+            if (rule.distribution_type === 'group') {
+              poolTotal = Math.round(adjustedBase * (effectivePct / 100) * 100) / 100;
+              const count = roleCounts[rKey] || 1;
+              amount = Math.round((poolTotal / count) * 100) / 100;
+            } else {
+              amount = Math.round(adjustedBase * (effectivePct / 100) * 100) / 100;
+            }
+          }
+          const workAmount = parseFloat(staffAmounts[s.id]) || 0;
+          return { staff: s, rule, pct: effectivePct, distType: rule.distribution_type, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'primary', adjustedBase, workAmount };
+        });
+
+        // === Add-On Department Staff ===
+        // CORRECTED: pool = mainIncome × addonPct, share = pool × rolePct
+        const addonSections: { deptId: string; deptName: string; deduction: number; pct: number; calcType: string; attRule: string; rows: RowData[] }[] = [];
+        for (const addon of addons.filter(a => a.addon_department_id && a.percentage > 0)) {
+          const addonDept = departments.find(d => d.id === addon.addon_department_id);
+          const aStaff = addonStaffMap[addon.addon_department_id] || [];
+          const aRules = addonRulesMap[addon.addon_department_id] || [];
+          // Pool from MAIN department income
+          const pool = tda > 0 ? Math.round(tda * (addon.percentage / 100) * 100) / 100 : 0;
+          const addonCalcType = addon.calculation_type || 'individual';
+          const addonAttRule = addon.attendance_rule || 'none';
+
+          const aRoleCounts: Record<string, number> = {};
+          aStaff.forEach(s => {
+            const rk = s.role.toUpperCase().trim();
+            aRoleCounts[rk] = (aRoleCounts[rk] || 0) + 1;
+          });
+
+          const aRows: RowData[] = aStaff.map(s => {
+            const rKey = s.role.toUpperCase().trim();
+            // Use addon department's own rules
+            const rule = aRules.find(r => r.role.toUpperCase().trim() === rKey);
+            const absentDays = getAbsentDays(s.id);
+            const workingDays = totalDays - absentDays;
+
+            if (!rule) return { staff: s, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'addon', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
+
+            const pct = parseFloat(rule.percentage) || 0;
+            const overridePct = s.department_percentages?.[addon.addon_department_id];
+            const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : pct;
+
+            let amount = 0;
+            let poolTotal = 0;
+            let adjustedBase = pool;
+
+            if (pool > 0) {
+              // Calculate base share from pool
+              if (addonCalcType === 'group') {
+                poolTotal = Math.round(pool * (effectivePct / 100) * 100) / 100;
+                const count = aRoleCounts[rKey] || 1;
+                amount = Math.round((poolTotal / count) * 100) / 100;
+              } else {
+                amount = pool;
+              }
+
+              // Apply attendance
+              if (addonAttRule === 'monthly' || addonAttRule === 'daily') {
+                const ratio = totalDays > 0 ? (workingDays / totalDays) : 1;
+                amount = Math.round(amount * ratio * 100) / 100;
+                adjustedBase = Math.round(pool * ratio * 100) / 100;
+              }
+            }
+            const workAmount = parseFloat(staffAmounts[s.id]) || 0;
+            return { staff: s, rule, pct: effectivePct, distType: addonCalcType, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'addon', adjustedBase, workAmount };
+          });
+
+          addonSections.push({
+            deptId: addon.addon_department_id,
+            deptName: addonDept?.name || 'Unknown',
+            deduction: pool,
+            pct: addon.percentage,
+            calcType: addonCalcType,
+            attRule: addonAttRule,
+            rows: aRows
+          });
+        }
+
+        const totalAddon = addonSections.reduce((s, sec) => s + sec.rows.reduce((ss, r) => ss + r.estimatedAmount, 0), 0);
+        const grandTotal = totalAddon;
+
+        const renderRow = (row: RowData, idx: number) => (
+          <tr key={row.staff.id + '-' + row.section} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)', background: idx % 2 === 0 ? 'transparent' : 'rgba(15, 23, 42, 0.15)' }}>
+            <td style={{ padding: '10px 20px' }}>
+              <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: '14px' }}>{row.staff.name}</span>
+              {row.staff.staff_code && (
+                <span style={{ fontSize: '10px', color: '#64748b', marginLeft: '6px', fontFamily: 'monospace' }}>{row.staff.staff_code}</span>
+              )}
+            </td>
+            <td style={{ padding: '10px 16px' }}>
+              {row.rule ? (
+                <span style={{
+                  fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
+                  background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', textTransform: 'uppercase'
+                }}>{row.staff.role}</span>
+              ) : (
+                <span style={{
+                  fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
+                  background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', textTransform: 'uppercase'
+                }}>{row.staff.role} ⚠</span>
+              )}
+            </td>
+            <td style={{ padding: '10px 16px', fontSize: '14px', fontWeight: 700, color: row.rule ? '#10b981' : '#ef4444' }}>
+              {row.rule ? `${row.pct}%` : 'No Rule'}
+            </td>
+            <td style={{ padding: '10px 16px' }}>
+              {row.rule ? (
+                <span style={{
+                  fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px',
+                  background: row.distType === 'group' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(96, 165, 250, 0.15)',
+                  color: row.distType === 'group' ? '#fbbf24' : '#60a5fa'
+                }}>
+                  {row.distType === 'group' ? '👥 Pool' : '👤 Individual'}
+                </span>
+              ) : (
+                <span style={{ fontSize: '11px', color: '#64748b' }}>—</span>
+              )}
+            </td>
+            {isMonthlyBased && (
+              <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: row.absentDays > 0 ? '#fbbf24' : '#34d399' }}>
+                  {row.workingDays}/{totalDays}
+                </span>
+                {row.absentDays > 0 && (
+                  <span style={{ fontSize: '10px', color: '#f87171', marginLeft: '4px' }}>({row.absentDays} off)</span>
+                )}
+              </td>
+            )}
+            <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: row.workAmount > 0 ? '#3b82f6' : '#64748b' }}>
+                {row.workAmount > 0 ? `₹${row.workAmount.toLocaleString()}` : '—'}
+              </span>
+            </td>
+            <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+              {tda > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 700, color: row.estimatedAmount > 0 ? '#10b981' : '#ef4444' }}>
+                    ₹{row.estimatedAmount.toLocaleString()}
+                  </span>
+                  {isMonthlyBased && (
+                    <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                      (on ₹{row.adjustedBase.toLocaleString()} - {row.workingDays}/{totalDays} d)
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span style={{ color: '#475569' }}>—</span>
+              )}
+            </td>
+          </tr>
+        );
+
+        return (
+          <div className="glass-card mb-6" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(71, 85, 105, 0.2)' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Users size={16} style={{ color: '#c084fc' }} /> Staff-wise Share Breakdown
+              </h3>
+              {tda > 0 ? (
+                <p className="text-xs text-slate-400" style={{ marginTop: '4px' }}>
+                  Total Dept Income ₹{tda.toLocaleString()}
+                  {isMonthlyBased ? ' • Monthly attendance proration applied' : ''}
+                </p>
+              ) : (
+                <p className="text-xs text-amber-400" style={{ marginTop: '4px' }}>
+                  ⚠ Enter a Total Department Amount above to see calculated shares
+                </p>
+              )}
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                    <th style={{ padding: '10px 20px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Staff Member</th>
+                    <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Role</th>
+                    <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Rule %</th>
+                    <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Distribution</th>
+                    {isMonthlyBased && (
+                      <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>Attendance</th>
+                    )}
+                    <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Work Amount</th>
+                    <th style={{ padding: '10px 20px', color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Estimated Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Add-On Department Sections */}
+                  {addonSections.map(sec => (
+                    <Fragment key={`hdr-${sec.deptId}`}>
+                      <tr style={{ background: 'rgba(245, 158, 11, 0.08)', borderTop: '2px solid rgba(245, 158, 11, 0.2)', borderBottom: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                        <td colSpan={colCount} style={{ padding: '8px 20px', fontSize: '12px', fontWeight: 700, color: '#fbbf24', letterSpacing: '0.5px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <span style={{ textTransform: 'uppercase' }}>⚡ {sec.deptName} (Add-On {sec.pct}%)</span>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: sec.calcType === 'group' ? 'rgba(245,158,11,0.2)' : 'rgba(96,165,250,0.2)', color: sec.calcType === 'group' ? '#fbbf24' : '#60a5fa' }}>
+                              {sec.calcType === 'group' ? '👥 Group' : '👤 Individual'}
+                            </span>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: sec.attRule === 'daily' ? 'rgba(16,185,129,0.2)' : sec.attRule === 'monthly' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)', color: sec.attRule === 'daily' ? '#34d399' : sec.attRule === 'monthly' ? '#fbbf24' : '#f87171' }}>
+                              {sec.attRule === 'daily' ? '📅 Daily' : sec.attRule === 'monthly' ? '📊 Monthly' : '🚫 None'}
+                            </span>
+                            {sec.deduction > 0 && <span style={{ fontSize: '10px', color: '#94a3b8' }}>Pool: ₹{sec.deduction.toLocaleString()}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                      {sec.rows.length > 0 ? (
+                        sec.rows.map((row, idx) => renderRow(row, idx))
+                      ) : (
+                        <tr>
+                          <td colSpan={colCount} style={{ padding: '10px 20px', fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>No staff assigned to this department</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+                {tda > 0 && (
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid rgba(71, 85, 105, 0.3)', background: 'rgba(16, 185, 129, 0.05)' }}>
+                      <td colSpan={colCount - 1} style={{ padding: '12px 20px', fontSize: '13px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                        Add-On Grand Total
+                      </td>
+                      <td style={{ padding: '12px 20px', textAlign: 'right', fontSize: '18px', fontWeight: 800, color: '#10b981' }}>
+                        ₹{grandTotal.toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+
+      {selectedDept && (
+        <div className="glass-card mb-6" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#c084fc' }}>⚡</span> External Add-On Department Shares
+            </h3>
+            <button 
+              className="btn btn-secondary" 
+              style={{ fontSize: '12px', padding: '6px 12px' }}
+              onClick={() => setAddons([...addons, { addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none' }])}
+            >
+              + Add Add-On
+            </button>
+          </div>
+          
+          {addons.length === 0 ? (
+            <p className="text-xs text-slate-500 italic">No add-on departments configured for this month.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {addons.map((addon, index) => {
+                const targetDept = departments.find(d => d.id === addon.addon_department_id);
+                return (
+                  <div key={index} className="p-4 rounded-xl border border-slate-700/50 bg-slate-900/30">
+                    {/* Row 1: Target Department + Percentage + Delete */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="form-label text-xs">Target Department</label>
+                        <select 
+                          className="select-field" 
+                          value={addon.addon_department_id}
+                          onChange={(e) => {
+                            const next = [...addons];
+                            next[index].addon_department_id = e.target.value;
+                            // Initialize with all active rules for this department by default
+                            next[index].applied_rules = (addonRulesMap[e.target.value] || []).map(r => r.id);
+                            setAddons(next);
+                          }}
+                        >
+                          <option value="">Select Dept...</option>
+                          {departments.filter(d => d.id !== selectedDept).map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2">
+                        <div style={{ flex: 1 }}>
+                          <label className="form-label text-xs">Percentage (%)</label>
+                          <input 
+                            type="number" min="0" max="100" step="0.1"
+                            className="input-field"
+                            value={addon.percentage}
+                            onChange={(e) => {
+                               const next = [...addons];
+                               next[index].percentage = parseFloat(e.target.value) || 0;
+                               setAddons(next);
+                            }}
+                          />
+                          <p style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>1 = 1%, 0.5 = 0.5%</p>
+                        </div>
+                        <div className="flex items-end" style={{ paddingBottom: '18px' }}>
+                          <button 
+                            className="btn btn-danger" 
+                            style={{ padding: '10px' }}
+                            onClick={() => {
+                              setAddons(addons.filter((_, i) => i !== index));
+                            }}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Row 2: Selected Targeted Rules */}
+                    <div className="mb-3">
+                      <label style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', display: 'block' }}>
+                        Apply To Rules
+                      </label>
+                      {!addon.addon_department_id ? (
+                        <p style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>Please select a Target Department first.</p>
+                      ) : (addonRulesMap[addon.addon_department_id] || []).length === 0 ? (
+                        <p style={{ fontSize: '11px', color: '#ef4444', fontStyle: 'italic' }}>⚠ No active rules found in target department.</p>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px' }}>
+                          {(addonRulesMap[addon.addon_department_id] || []).map(rule => {
+                            const isApplied = (addon.applied_rules || []).includes(rule.id);
+                            return (
+                              <div 
+                                key={rule.id}
+                                onClick={() => {
+                                  const next = [...addons];
+                                  const currentApplied = next[index].applied_rules || [];
+                                  if (currentApplied.includes(rule.id)) {
+                                    next[index].applied_rules = currentApplied.filter((id: string) => id !== rule.id);
+                                  } else {
+                                    next[index].applied_rules = [...currentApplied, rule.id];
+                                  }
+                                  setAddons(next);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  border: isApplied ? '1px solid #10b981' : '1px solid rgba(71, 85, 105, 0.3)',
+                                  background: isApplied ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.3)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  opacity: isApplied ? 1 : 0.5
+                                }}
+                              >
+                                {isApplied ? <CheckSquare size={14} style={{ color: '#10b981' }} /> : <Square size={14} style={{ color: '#64748b' }} />}
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 600, color: isApplied ? '#34d399' : '#94a3b8' }}>
+                                    {rule.role}
+                                  </span>
+                                  <span style={{ fontSize: '9px', color: '#64748b' }}>
+                                    {rule.percentage}% ({rule.distribution_type === 'group' ? 'Group' : 'Indiv'})
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Row 3: Attendance Rule */}
+                    <div>
+                      <label style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', display: 'block' }}>
+                        Attendance Rule
+                      </label>
+                      <div className="flex gap-2">
+                        {[
+                          { key: 'daily', label: '📅 Daily', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+                          { key: 'monthly', label: '📊 Monthly', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+                          { key: 'none', label: '🚫 None', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+                        ].map(opt => {
+                          const isActive = (addon.attendance_rule || 'none') === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              onClick={() => {
+                                const next = [...addons];
+                                next[index].attendance_rule = opt.key;
+                                setAddons(next);
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                borderRadius: '8px',
+                                border: isActive ? `2px solid ${opt.color}` : '2px solid rgba(71, 85, 105, 0.3)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                background: isActive ? opt.bg : 'transparent',
+                                color: isActive ? opt.color : '#64748b',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', fontStyle: 'italic' }}>
+                        {(addon.attendance_rule || 'none') === 'daily' && '→ Share only for days when staff is present'}
+                        {(addon.attendance_rule || 'none') === 'monthly' && '→ Share based on total monthly attendance (prorated)'}
+                        {(addon.attendance_rule || 'none') === 'none' && '→ No attendance adjustment applied'}
+                      </p>
+                    </div>
+
+                    {/* Selected Rule Summary */}
+                    {addon.addon_department_id && targetDept && (
+                      <div style={{ marginTop: '10px', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(71,85,105,0.2)' }}>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Selected:</span>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#f8fafc' }}>{targetDept.name}</span>
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700 }}>{addon.percentage}%</span>
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: (addon.calculation_type || 'individual') === 'group' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.15)', color: (addon.calculation_type || 'individual') === 'group' ? '#fbbf24' : '#60a5fa', fontWeight: 700 }}>
+                            {(addon.calculation_type || 'individual') === 'group' ? 'Group' : 'Individual'}
+                          </span>
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: (addon.attendance_rule || 'none') === 'daily' ? 'rgba(16,185,129,0.15)' : (addon.attendance_rule || 'none') === 'monthly' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: (addon.attendance_rule || 'none') === 'daily' ? '#34d399' : (addon.attendance_rule || 'none') === 'monthly' ? '#fbbf24' : '#f87171', fontWeight: 700 }}>
+                            {(addon.attendance_rule || 'none') === 'daily' ? 'Daily Att.' : (addon.attendance_rule || 'none') === 'monthly' ? 'Monthly Att.' : 'No Att.'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {!selectedDept ? (
         <div className="glass-card empty-state">
           <CalendarPlus size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
@@ -386,90 +1148,286 @@ export default function MonthlyEntryPage() {
       ) : (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ 
-            padding: '16px 20px', 
+            padding: '20px', 
             borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
           }}>
-            <div>
-              <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
-                {deptName} Data
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>
+                {deptName} — {MONTHS[month - 1]} {year}
               </h3>
-              <p style={{ fontSize: '13px', color: '#94a3b8' }}>
-                {MONTHS[month - 1]} {year}
-              </p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Total</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#10b981' }}>
-                {totalIncome.toLocaleString()}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Dept Amount</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: (parseFloat(deptTotalAmount) || 0) > 0 ? '#10b981' : '#475569' }}>
+                  {(parseFloat(deptTotalAmount) || 0) > 0 ? `₹${parseFloat(deptTotalAmount).toLocaleString()}` : '— Not Set'}
+                </div>
               </div>
+            </div>
+
+            {/* Row 1: Income Source */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', display: 'block' }}>
+                Income Source
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[
+                  { key: 'income', label: '🏥 Day / Department Income', desc: 'Enter daily income for the department' },
+                  { key: 'staff_based', label: '👤 Staff Income-wise', desc: 'Enter income per staff member directly' }
+                ].map(opt => {
+                  const isActive = isStaffBased ? opt.key === 'staff_based' : opt.key === 'income';
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => changeIncomeType(opt.key as any)}
+                      title={opt.desc}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        borderRadius: '10px',
+                        border: isActive ? '2px solid #3b82f6' : '2px solid rgba(71, 85, 105, 0.3)',
+                        cursor: 'pointer',
+                        transition: 'all 0.25s ease',
+                        background: isActive 
+                          ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15))' 
+                          : 'rgba(15, 23, 42, 0.4)',
+                        color: isActive ? '#60a5fa' : '#64748b',
+                        boxShadow: isActive ? '0 0 12px rgba(59, 130, 246, 0.15)' : 'none',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Row 2: Attendance Rule */}
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', display: 'block' }}>
+                Attendance Rule
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[
+                  { key: 'daily', label: '📅 Daily-Based', desc: 'Staff absent on a day won\'t receive that day\'s income', color: '#10b981', border: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+                  { key: 'monthly', label: '📊 Monthly-Based', desc: 'Off/CL days deducted from total month — prorated share', color: '#f59e0b', border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+                  { key: 'none', label: '🚫 No Attendance', desc: 'Attendance is not counted — direct income only', color: '#ef4444', border: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' }
+                ].map(opt => {
+                  const isActive = attendanceRule === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => changeAttendanceRule(opt.key as any)}
+                      title={opt.desc}
+                      style={{
+                        flex: 1,
+                        padding: '10px 14px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        borderRadius: '10px',
+                        border: isActive ? `2px solid ${opt.border}` : '2px solid rgba(71, 85, 105, 0.3)',
+                        cursor: 'pointer',
+                        transition: 'all 0.25s ease',
+                        background: isActive ? opt.bg : 'rgba(15, 23, 42, 0.4)',
+                        color: isActive ? opt.color : '#64748b',
+                        boxShadow: isActive ? `0 0 12px ${opt.bg}` : 'none',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', fontStyle: 'italic' }}>
+                {attendanceRule === 'daily' && '→ Staff absent on a day won\'t receive that day\'s income share.'}
+                {attendanceRule === 'monthly' && '→ Off/CL days deducted from total month — prorated share calculation.'}
+                {attendanceRule === 'none' && '→ Attendance is not counted — direct income entries only.'}
+              </p>
             </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
-                  <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
-                  <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
-                  <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff Selector</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: totalDays }).map((_, i) => {
-                  const day = i + 1;
-                  const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
-                  const state = incomes[dateStr];
-                  const amount = state?.amount || '';
-                  const explicitPresent = state?.present_staff_ids;
-                  
-                  const leavesCount = leavesByDate[dateStr]?.size || 0;
-                  
-                  let presentText = '';
-                  if (explicitPresent) {
-                    presentText = `${explicitPresent.length}/${staffList.length} Selected (Manual)`;
-                  } else {
-                    presentText = `${staffList.length - leavesCount}/${staffList.length} Expected (Auto)`;
-                  }
-
-                  return (
-                    <tr key={day} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
-                      <td style={{ padding: '10px 20px', fontWeight: 600, color: '#cbd5e1', fontSize: '14px' }}>
-                        {day}
-                      </td>
-                      <td style={{ padding: '10px 20px' }}>
-                        <div style={{ position: 'relative', maxWidth: '200px' }}>
-                          <span style={{ 
-                            position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', 
-                            color: '#64748b', fontSize: '13px', fontWeight: 600 
-                          }}>₹</span>
-                          <input
-                            type="number"
-                            className="text-input"
-                            style={{ paddingLeft: '24px', height: '36px', fontSize: '14px' }}
-                            value={amount}
-                            onChange={(e) => handleIncomeChange(day, e.target.value)}
-                            placeholder="0"
-                            min="0"
-                            step="0.01"
-                          />
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 20px', textAlign: 'right' }}>
-                        <button 
-                          className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} 
-                          onClick={() => openModal(dateStr)}
-                          style={{ padding: '6px 12px', fontSize: '13px' }}
-                        >
-                          <Users size={14} style={{ marginRight: '6px' }} />
-                          {presentText}
-                        </button>
-                      </td>
+            {isStaffBased ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>Staff Member</th>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '200px' }}>Applicable Rule</th>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '220px', textAlign: 'right' }}>Amount (Direct)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffList.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No staff found for this department.</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : staffList.map((staff) => {
+                    const rule = deptRules.find(r => r.role.toUpperCase().trim() === staff.role.toUpperCase().trim());
+
+                    return (
+                      <tr key={staff.id} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                        <td style={{ padding: '10px 20px', fontWeight: 500, color: '#f8fafc', fontSize: '14px' }}>
+                          <div style={{ fontWeight: 600 }}>{staff.name}</div>
+                          <div style={{ color: '#64748b', fontSize: '11px' }}>{staff.staff_code || 'No Code'} • {staff.role}</div>
+                        </td>
+                        <td style={{ padding: '10px 20px' }}>
+                          {rule ? (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#10b981' }}>{rule.role}</span>
+                              <span style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                {rule.percentage}% • {rule.distribution_type === 'group' ? 'Group' : 'Individual'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 600 }}>⚠ No Matching Rule</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                            <div style={{ position: 'relative', width: '160px' }}>
+                              <span style={{ 
+                                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', 
+                                color: '#64748b', fontSize: '13px', fontWeight: 600 
+                              }}>₹</span>
+                              <input
+                                type="number"
+                                className="text-input"
+                                style={{ paddingLeft: '24px', height: '36px', fontSize: '14px', width: '100%' }}
+                                value={staffAmounts[staff.id] || ''}
+                                onChange={(e) => {
+                                  setStaffAmounts(prev => ({ ...prev, [staff.id]: e.target.value }));
+                                }}
+                                placeholder="0"
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                            <button
+                              onClick={() => setStaffList(prev => prev.filter(s => s.id !== staff.id))}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                borderRadius: '4px',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                transition: 'all 0.2s'
+                              }}
+                              title="Remove Staff from this Entry"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Add Extra Staff Option */}
+                  <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
+                    <td colSpan={3} style={{ padding: '12px 20px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Add Extra Staff:</span>
+                        <select
+                          className="select-field"
+                          style={{ maxWidth: '300px', height: '36px', fontSize: '13px' }}
+                          value=""
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            const newStaffId = e.target.value;
+                            const staffObj = globalStaffList.find(s => s.id === newStaffId);
+                            if (staffObj && !staffList.find(s => s.id === newStaffId)) {
+                               setStaffList(prev => [...prev, staffObj]);
+                            }
+                          }}
+                        >
+                          <option value="">-- Select Staff to Add --</option>
+                          {globalStaffList
+                            .filter(s => !staffList.find(x => x.id === s.id))
+                            .map(s => (
+                              <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                            ))
+                          }
+                        </select>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
+                    {attendanceRule === 'daily' && (
+                      <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: totalDays }).map((_, i) => {
+                    const day = i + 1;
+                    const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
+                    const state = incomes[dateStr];
+                    const amount = state?.amount || '';
+                    const explicitPresent = state?.present_staff_ids;
+                    
+                    const leavesCount = leavesByDate[dateStr]?.size || 0;
+                    
+                    let presentText = '';
+                    if (explicitPresent) {
+                      presentText = `${explicitPresent.length}/${staffList.length} Selected (Manual)`;
+                    } else {
+                      presentText = `${staffList.length - leavesCount}/${staffList.length} Expected (Auto)`;
+                    }
+
+                    return (
+                      <tr key={day} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                        <td style={{ padding: '10px 20px', fontWeight: 600, color: '#cbd5e1', fontSize: '14px' }}>
+                          {day}
+                        </td>
+                        <td style={{ padding: '10px 20px' }}>
+                          <div style={{ position: 'relative', maxWidth: '200px' }}>
+                            <span style={{ 
+                              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', 
+                              color: '#64748b', fontSize: '13px', fontWeight: 600 
+                            }}>₹</span>
+                            <input
+                              type="number"
+                              className="text-input"
+                              style={{ paddingLeft: '24px', height: '36px', fontSize: '14px' }}
+                              value={amount}
+                              onChange={(e) => handleIncomeChange(day, e.target.value)}
+                              placeholder="0"
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
+                        </td>
+                        {attendanceRule === 'daily' && (
+                          <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                            <button 
+                              className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} 
+                              onClick={() => openModal(dateStr)}
+                              style={{ padding: '6px 12px', fontSize: '13px' }}
+                            >
+                              <Users size={14} style={{ marginRight: '6px' }} />
+                              {presentText}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -546,62 +1504,6 @@ export default function MonthlyEntryPage() {
                 );
               })}
 
-              {/* Cross Department Entries */}
-              {subDepartments.length > 0 && (
-                <div style={{ marginTop: '32px', paddingTop: '20px', borderTop: '2px dashed rgba(51, 65, 85, 0.5)' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', marginBottom: '16px' }}>
-                    Cross-Department Entries (Manual Amount)
-                  </h3>
-                  
-                  {subDepartments.map(sd => {
-                    const sdStaff = subDeptStaff.filter(s => s.department_id === sd.id);
-                    if (sdStaff.length === 0) return null;
-
-                    return (
-                      <div key={sd.id} style={{ marginBottom: '20px' }}>
-                        <div style={{ 
-                          background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)',
-                          padding: '8px 12px', borderRadius: '6px', marginBottom: '10px' 
-                        }}>
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24' }}>
-                            {sd.name}
-                          </span>
-                        </div>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                          {sdStaff.map(staff => (
-                            <div key={staff.id} style={{ 
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              padding: '10px 14px', background: 'rgba(15, 23, 42, 0.6)', borderRadius: '8px',
-                              border: '1px solid rgba(51, 65, 85, 0.8)'
-                            }}>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '14px', fontWeight: 500 }}>{staff.name}</span>
-                                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{staff.role}</span>
-                              </div>
-                              <div style={{ position: 'relative', width: '120px' }}>
-                                <span style={{ 
-                                  position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', 
-                                  color: '#64748b', fontSize: '13px', fontWeight: 600 
-                                }}>₹</span>
-                                <input
-                                  type="number"
-                                  className="text-input"
-                                  style={{ paddingLeft: '22px', height: '34px', fontSize: '13px' }}
-                                  value={tempWorkEntries[staff.id] || ''}
-                                  onChange={(e) => handleWorkEntryChange(staff.id, e.target.value)}
-                                  placeholder="0.00"
-                                  min="0"
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
             
             <div className="modal-footer" style={{ borderTop: '1px solid rgba(71, 85, 105, 0.2)', padding: '16px' }}>

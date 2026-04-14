@@ -8,21 +8,34 @@ export interface Department {
   id: string;
   name: string;
   is_active: boolean;
-  is_sub_department: boolean;
-  include_general_staff: boolean;
+  calculation_method: 'income' | 'staff_based';
+  attendance_rule: 'daily' | 'monthly' | 'none';
   created_at: string;
   updated_at: string;
+}
+
+export interface MonthlyDepartmentAddon {
+  id: string;
+  department_id: string;
+  addon_department_id: string;
+  month: string;
+  percentage: number;
+  calculation_type: 'individual' | 'group';
+  attendance_rule: 'daily' | 'monthly' | 'none';
+  created_at: string;
 }
 
 export interface Staff {
   id: string;
   name: string;
   department_id: string;
+  department_ids?: string[];
   role: string;
   is_active: boolean;
-  is_general: boolean;
   staff_code?: string;
+  department_percentages?: Record<string, string>;
   created_at: string;
+
   updated_at: string;
   departments?: Department;
 }
@@ -56,6 +69,16 @@ export interface MonthlyAttendanceStatus {
   is_reviewed: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface DepartmentStaffAmount {
+  id: string;
+  department_id: string;
+  staff_id: string;
+  month: string;
+  amount: number;
+  created_at: string;
+  staff?: Staff;
 }
 
 export type LeaveType = 'OFF' | 'CL';
@@ -104,16 +127,16 @@ export interface DailyResult {
 export interface DepartmentForm {
   name: string;
   is_active: boolean;
-  is_sub_department: boolean;
-  include_general_staff: boolean;
 }
 
 export interface StaffForm {
   name: string;
   department_id: string;
+  department_ids?: string[];
+  department_percentages?: Record<string, string>;
+  staff_code?: string;
   role: string;
   is_active: boolean;
-  is_general: boolean;
 }
 
 export interface DepartmentRuleForm {

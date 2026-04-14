@@ -8,10 +8,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { data, error } = await supabase
     .from('departments')
     .update({ 
-      name: body.name, 
-      is_active: body.is_active,
-      is_sub_department: body.is_sub_department,
-      include_general_staff: body.include_general_staff,
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.is_active !== undefined && { is_active: body.is_active }),
+      ...(body.calculation_method !== undefined && { calculation_method: body.calculation_method }),
+      ...(body.attendance_rule !== undefined && { attendance_rule: body.attendance_rule }),
     })
     .eq('id', id)
     .select()

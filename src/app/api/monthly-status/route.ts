@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient as createClient } from '@/lib/supabase/server';
+import { invalidateReportCache } from '@/lib/cache';
 
 /**
  * GET /api/monthly-status?month=YYYY-MM
@@ -47,5 +48,6 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  invalidateReportCache();
   return NextResponse.json(data);
 }

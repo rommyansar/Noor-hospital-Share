@@ -18,20 +18,30 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const supabase = createClient();
+      console.log('Attempting login for:', email);
+      
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (authError) {
-      setError(authError.message);
+      if (authError) {
+        console.error('Login error:', authError.message);
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Login successful, redirecting...');
+      // Use window.location.href for a full page reload to ensure auth cookies are synced
+      window.location.href = '/';
+    } catch (err: any) {
+      console.error('Unexpected login fault:', err);
+      setError('An unexpected error occurred. Please check the browser console.');
       setLoading(false);
-      return;
     }
-
-    router.push('/');
-    router.refresh();
   };
 
   return (

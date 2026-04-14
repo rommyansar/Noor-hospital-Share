@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient as createClient } from '@/lib/supabase/server';
 
+import { invalidateReportCache } from '@/lib/cache';
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const body = await req.json();
@@ -26,5 +28,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: errors[0].error?.message }, { status: 500 });
   }
 
-  return NextResponse.json(results.map(r => r.data));
+  invalidateReportCache();
+  return NextResponse.json(results.map((r) => r.data));
 }

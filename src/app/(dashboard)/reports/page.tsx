@@ -30,7 +30,8 @@ interface StaffReport {
   role: string;
   total_share: number;
   days_present: number;
-  daily_details: { date: string; share: number; type: string }[];
+  origin_department: string;
+  daily_details: { date: string; share: number; type: string; note?: string }[];
   work_entries: WorkEntryDetail[];
   rule_entries: RuleEntryDetail[];
 }
@@ -70,7 +71,10 @@ export default function ReportsPage() {
   const fetchReport = async () => {
     if (!selectedDept) return;
     setLoading(true);
-    const res = await fetch(`/api/reports?department_id=${selectedDept}&year=${year}&month=${month}`);
+    const cb = new Date().getTime();
+    const res = await fetch(`/api/reports?department_id=${selectedDept}&year=${year}&month=${month}&_cb=${cb}`, {
+      cache: 'no-store'
+    });
     const data = await res.json();
     if (res.ok) {
       setReport(data);
@@ -291,9 +295,16 @@ export default function ReportsPage() {
                               borderBottom: isExpanded ? '1px solid rgba(71, 85, 105, 0.15)' : 'none',
                             }}
                           >
-                            <span style={{ fontWeight: 600 }}>{s.staff_name}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: 600 }}>{s.staff_name}</span>
+                              {s.origin_department !== deptName && (
+                                <span style={{ fontSize: '10px', color: '#64748b' }}>
+                                  from {s.origin_department}
+                                </span>
+                              )}
+                            </div>
                             <span><span className="badge badge-info">{s.role}</span></span>
-                            <span style={{ textAlign: 'center', color: '#94a3b8' }}>{s.days_present}</span>
+                            <span style={{ textAlign: 'center', color: '#94a3b8' }}>{s.days_present < 0 ? '-' : s.days_present}</span>
                             <span style={{ textAlign: 'right', fontWeight: 700, color: '#34d399', fontSize: '16px' }}>
                               ₹{s.total_share.toLocaleString()}
                             </span>
@@ -318,6 +329,11 @@ export default function ReportsPage() {
                                       <span className={`badge ${d.type === 'work_entry' ? 'badge-warning' : 'badge-success'}`} style={{ fontSize: '10px' }}>
                                         {d.type === 'work_entry' ? 'Work' : 'Rule'}
                                       </span>
+                                      {d.note && (
+                                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', lineHeight: 1.1 }}>
+                                          {d.note}
+                                        </div>
+                                      )}
                                     </span>
                                     <span style={{ fontSize: '13px', fontWeight: 600, color: '#34d399', textAlign: 'right', padding: '4px 0' }}>
                                       ₹{d.share.toLocaleString()}

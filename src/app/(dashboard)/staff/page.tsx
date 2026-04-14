@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Users, Pencil, Trash2, X, Globe } from 'lucide-react';
+import { Plus, Users, Pencil, Trash2, X, Building2, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department, Staff, StaffForm } from '@/lib/types';
 
@@ -10,33 +10,33 @@ export default function StaffPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterDept, setFilterDept] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', role: '', is_active: true, is_general: false });
+  const [form, setForm] = useState<StaffForm>({ name: '', department_id: '', department_ids: [], department_percentages: {}, role: '', is_active: true, staff_code: '' });
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
     const data = await res.json();
     setDepartments(data);
-    if (data.length > 0 && !filterDept) setFilterDept(data[0].id);
   };
 
   const fetchStaff = async () => {
     setLoading(true);
-    const url = filterDept ? `/api/staff?department_id=${filterDept}` : '/api/staff';
-    const res = await fetch(url);
+    const res = await fetch('/api/staff?t=' + Date.now(), { cache: 'no-store' });
     const data = await res.json();
     setStaff(data);
     setLoading(false);
   };
 
-  useEffect(() => { fetchDepartments(); }, []);
-  useEffect(() => { if (filterDept) fetchStaff(); }, [filterDept]);
+  useEffect(() => { 
+    fetchDepartments(); 
+    fetchStaff(); 
+  }, []);
 
   const openAdd = () => {
     setEditingId(null);
-    setForm({ name: '', department_id: filterDept, role: '', is_active: true, is_general: false });
+    setForm({ name: '', staff_code: '', department_id: '', department_ids: [], department_percentages: {}, role: '', is_active: true });
     setShowModal(true);
   };
 
@@ -44,17 +44,19 @@ export default function StaffPage() {
     setEditingId(s.id);
     setForm({
       name: s.name,
+      staff_code: s.staff_code || '',
       department_id: s.department_id,
+      department_ids: s.department_ids || [s.department_id], // migrate legacy to array
+      department_percentages: s.department_percentages || {},
       role: s.role,
       is_active: s.is_active,
-      is_general: s.is_general ?? false,
     });
     setShowModal(true);
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) { addToast('error', 'Name required'); return; }
-    if (!form.department_id) { addToast('error', 'Department required'); return; }
+    if (!form.department_ids || form.department_ids.length === 0) { addToast('error', 'Select at least one department'); return; }
     if (!form.role.trim()) { addToast('error', 'Role required'); return; }
 
     const method = editingId ? 'PUT' : 'POST';
@@ -63,7 +65,7 @@ export default function StaffPage() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, department_id: form.department_ids[0] }), // keep first as primary
     });
 
     if (!res.ok) {
@@ -85,7 +87,15 @@ export default function StaffPage() {
     fetchStaff();
   };
 
-  const deptName = departments.find((d) => d.id === filterDept)?.name || '';
+  const toggleDeptId = (id: string) => {
+    setForm(prev => {
+      const current = prev.department_ids || [];
+      if (current.includes(id)) {
+        return { ...prev, department_ids: current.filter(x => x !== id) };
+      }
+      return { ...prev, department_ids: [...current, id] };
+    });
+  };
 
   // Get unique roles for quick-add suggestions
   const existingRoles = [...new Set(staff.map((s) => s.role))];
@@ -94,10 +104,9 @@ export default function StaffPage() {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Staff</h1>
+          <h1 className="page-title">Staff Directory</h1>
           <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
-            {deptName ? `${deptName} — ` : ''}
-            {staff.length} member{staff.length !== 1 ? 's' : ''}
+            All Active & Inactive Members — {staff.length} member{staff.length !== 1 ? 's' : ''}
           </p>
         </div>
         <button className="btn-primary" onClick={openAdd}>
@@ -105,18 +114,19 @@ export default function StaffPage() {
         </button>
       </div>
 
-      {/* Department Filter */}
-      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
-        <label className="form-label">Department</label>
-        <select
-          className="select-field"
-          value={filterDept}
-          onChange={(e) => setFilterDept(e.target.value)}
-        >
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
-          ))}
-        </select>
+      {/* Search Bar */}
+      <div className="glass-card" style={{ padding: '12px 16px', marginBottom: '16px' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+          <input
+            type="text"
+            className="input-field"
+            placeholder="Search by name, code, role, or department..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: '36px', width: '100%' }}
+          />
+        </div>
       </div>
 
       {loading ? (
@@ -124,7 +134,7 @@ export default function StaffPage() {
       ) : staff.length === 0 ? (
         <div className="glass-card empty-state">
           <Users size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
-          <p style={{ fontSize: '16px', fontWeight: 500 }}>No staff in this department</p>
+          <p style={{ fontSize: '16px', fontWeight: 500 }}>No staff found in the system</p>
         </div>
       ) : (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -132,49 +142,74 @@ export default function StaffPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <th>Name & IND</th>
                   <th>Role</th>
-                  <th>Type</th>
+                  <th>Departments</th>
                   <th>Status</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {staff.map((s) => (
+                {staff.filter(s => {
+                  if (!searchQuery.trim()) return true;
+                  const q = searchQuery.toLowerCase();
+                  const deptNames = (s.department_ids && s.department_ids.length > 0 ? s.department_ids : [s.department_id])
+                    .map(id => departments.find(d => d.id === id)?.name || '').join(' ').toLowerCase();
+                  return s.name.toLowerCase().includes(q) || 
+                    (s.staff_code || '').toLowerCase().includes(q) || 
+                    s.role.toLowerCase().includes(q) ||
+                    deptNames.includes(q);
+                }).map((s) => {
+                  const sDeptIds = s.department_ids && s.department_ids.length > 0 ? s.department_ids : [s.department_id];
+                  
+                  return (
                   <tr key={s.id}>
-                    <td style={{ fontWeight: 600 }}>{s.name}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontWeight: 600 }}>{s.name}</span>
+                        {s.staff_code && (
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: '#334155',
+                            color: '#94a3b8',
+                            fontFamily: 'monospace',
+                            letterSpacing: '0.5px'
+                          }}>
+                            IND {s.staff_code}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       <span className="badge badge-info">{s.role}</span>
                     </td>
                     <td>
-                      {s.is_general ? (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 10px',
-                          borderRadius: '20px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          background: 'rgba(168, 85, 247, 0.12)',
-                          color: '#c084fc',
-                        }}>
-                          <Globe size={12} /> General
-                        </span>
-                      ) : (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '3px 10px',
-                          borderRadius: '20px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          background: 'rgba(59, 130, 246, 0.1)',
-                          color: '#60a5fa',
-                        }}>
-                          Department
-                        </span>
-                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                         {sDeptIds.map(dId => {
+                           const dInfo = departments.find(d => d.id === dId);
+                           if (!dInfo) return null;
+                           return (
+                             <span key={dId} style={{
+                               display: 'inline-flex',
+                               alignItems: 'center',
+                               gap: '4px',
+                               padding: '3px 8px',
+                               borderRadius: '6px',
+                               fontSize: '12px',
+                               fontWeight: 500,
+                               background: 'rgba(59, 130, 246, 0.1)',
+                               color: '#60a5fa',
+                               border: '1px solid rgba(59, 130, 246, 0.2)'
+                             }}>
+                               <Building2 size={12} />
+                               {dInfo.name}
+                             </span>
+                           );
+                         })}
+                      </div>
                     </td>
                     <td>
                       <span className={s.is_active ? 'badge badge-success' : 'badge badge-danger'}>
@@ -192,7 +227,7 @@ export default function StaffPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -224,20 +259,77 @@ export default function StaffPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Department</label>
-              <select
-                className="select-field"
-                value={form.department_id}
-                onChange={(e) => setForm({ ...form, department_id: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
+              <label className="form-label">IND Number (Optional)</label>
+              <input
+                className="input-field"
+                value={form.staff_code || ''}
+                onChange={(e) => setForm({ ...form, staff_code: e.target.value })}
+                placeholder="e.g. 2481 or T-102"
+              />
             </div>
 
             <div className="form-group">
+              <label className="form-label" style={{ marginBottom: '8px' }}>Departments Assigned</label>
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '8px', 
+                maxHeight: '260px', 
+                overflowY: 'auto',
+                background: 'rgba(15, 23, 42, 0.4)',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(51, 65, 85, 0.5)'
+              }}>
+                {departments.map((d) => {
+                  const isSelected = (form.department_ids || []).includes(d.id);
+                  return (
+                  <div key={d.id} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    gap: '10px', 
+                    padding: '6px',
+                    borderRadius: '6px',
+                    background: isSelected ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
+                    transition: 'background 0.2s'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1 }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => toggleDeptId(d.id)}
+                        style={{ width: '16px', height: '16px', accentColor: '#38bdf8', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '14px', color: isSelected ? '#e2e8f0' : '#94a3b8', fontWeight: isSelected ? 600 : 400 }}>
+                        {d.name}
+                      </span>
+                    </label>
+                    {isSelected && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
+                        <input
+                          type="number"
+                          placeholder="Rule %"
+                          title="Override department rule % for this staff"
+                          className="input-field"
+                          style={{ width: '80px', padding: '4px 8px', fontSize: '13px' }}
+                          value={form.department_percentages?.[d.id] || ''}
+                          onChange={(e) => setForm({
+                            ...form,
+                            department_percentages: {
+                              ...(form.department_percentages || {}),
+                              [d.id]: e.target.value
+                            }
+                          })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )})}
+              </div>
+            </div>
+
+            <div className="form-group mt-4">
               <label className="form-label">Role</label>
               <input
                 className="input-field"
@@ -263,40 +355,7 @@ export default function StaffPage() {
               </div>
             </div>
 
-            {/* General Staff Toggle */}
-            <div className="form-group">
-              <div style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 16px',
-                borderRadius: '12px',
-                background: form.is_general
-                  ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(168, 85, 247, 0.03))'
-                  : 'rgba(30, 41, 59, 0.4)',
-                border: form.is_general
-                  ? '1px solid rgba(168, 85, 247, 0.25)'
-                  : '1px solid rgba(71, 85, 105, 0.2)',
-                transition: 'all 0.3s ease',
-              }}>
-                <div>
-                  <label className="form-label mb-0" style={{ marginBottom: 0, color: form.is_general ? '#c084fc' : '#94a3b8' }}>
-                    General Staff
-                  </label>
-                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', lineHeight: 1.4 }}>
-                    Receives share from all departments that include general staff
-                  </p>
-                </div>
-                <div
-                  className={`toggle-switch ${form.is_general ? 'active' : 'inactive'}`}
-                  onClick={() => setForm({ ...form, is_general: !form.is_general })}
-                  style={form.is_general ? { background: 'linear-gradient(135deg, #a855f7, #7c3aed)' } : {}}
-                >
-                  <div className="toggle-knob" />
-                </div>
-              </div>
-            </div>
+
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>

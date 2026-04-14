@@ -33,6 +33,7 @@ interface StaffReportData {
   role: string;
   total_share: number;
   days_present: number;
+  origin_department: string;
   work_entries: WorkEntry[];
   rule_entries: RuleEntry[];
 }
@@ -64,8 +65,8 @@ interface NormalRow {
   shareAmount: number;
 }
 
-function buildNormalRows(staff: StaffReportData[]): NormalRow[] {
-  return staff.map((s, idx) => {
+function buildNormalRows(data: ReportExportData): NormalRow[] {
+  return data.staff.map((s, idx) => {
     // Combine all work entry amounts
     const totalWorkAmount = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
 
@@ -86,7 +87,9 @@ function buildNormalRows(staff: StaffReportData[]): NormalRow[] {
 
     return {
       srNo: idx + 1,
-      staffName: s.staff_name,
+      staffName: s.origin_department !== data.department_name 
+        ? `${s.staff_name} (${s.origin_department})` 
+        : s.staff_name,
       role: s.role,
       workAmount: Math.round(workAmount * 100) / 100,
       percentage: displayPercentage,
@@ -160,7 +163,9 @@ function getMonthYear(data: ReportExportData): string {
 }
 
 function formatCurrency(val: number): string {
-  return `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  // Strip any unexpected whitespace/formatting issues from toLocaleString output
+  const formatted = val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, '');
+  return `Rs. ${formatted}`;
 }
 
 // ── Excel Export ────────────────────────────────
@@ -182,8 +187,8 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   let sheetData: (string | number)[][];
 
   if (type === 'normal') {
-    const rows = buildNormalRows(data.staff);
-    const tableHeader = ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (₹)', 'Percentage (%)', 'Share Amount (₹)'];
+    const rows = buildNormalRows(data);
+    const tableHeader = ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
     const tableRows = rows.map(r => [
       r.srNo,
       r.staffName,
@@ -200,7 +205,7 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     ];
   } else {
     const rows = buildDetailedRows(data.staff);
-    const tableHeader = ['Sr. No.', 'Staff Name', 'Role', 'Work Type', 'Work Amount (₹)', 'Percentage (%)', 'Calculated Share (₹)'];
+    const tableHeader = ['Sr. No.', 'Staff Name', 'Role', 'Work Type', 'Work Amount (Rs.)', 'Percentage (%)', 'Calculated Share (Rs.)'];
     const tableRows = rows.map(r => [
       r.srNo,
       r.staffName,
@@ -304,10 +309,10 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
 
   // ── Table ──
   if (type === 'normal') {
-    const rows = buildNormalRows(data.staff);
+    const rows = buildNormalRows(data);
     autoTable(doc, {
       startY: yPos,
-      head: [['Sr. No.', 'Staff Name', 'Role', 'Work Amount (₹)', 'Percentage (%)', 'Share Amount (₹)']],
+      head: [['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)']],
       body: rows.map(r => [
         r.srNo,
         r.staffName,
@@ -345,7 +350,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const rows = buildDetailedRows(data.staff);
     autoTable(doc, {
       startY: yPos,
-      head: [['Sr.', 'Staff Name', 'Role', 'Work Type', 'Work Amount (₹)', '% ', 'Calculated Share (₹)']],
+      head: [['Sr.', 'Staff Name', 'Role', 'Work Type', 'Work Amount (Rs.)', '% ', 'Calculated Share (Rs.)']],
       body: rows.map(r => [
         r.srNo,
         r.staffName,

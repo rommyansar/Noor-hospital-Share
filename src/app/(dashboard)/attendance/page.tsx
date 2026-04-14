@@ -1,67 +1,107 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShieldCheck, ShieldAlert, Save } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Save, Filter, Calendar, X } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
-import type { Staff, StaffLeave, LeaveType } from '@/lib/types';
-import { MONTHS } from '@/lib/types';
+import type { Department, Staff, StaffLeave } from '@/lib/types';
 
-function getDaysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
+function getCurrentMonthStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// Key: "date|staffId" => LeaveType or null
-type PendingChanges = Map<string, LeaveType | null>;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+type PendingChanges = Map<string, string>;
 
 export default function AttendancePage() {
   const { addToast } = useToast();
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthStr());
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [leaves, setLeaves] = useState<StaffLeave[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isReviewed, setIsReviewed] = useState(false);
+  const [addonDeptIds, setAddonDeptIds] = useState<Set<string>>(new Set());
 
-  // Batch pending changes
+  // Pending changes stores exactly what the user typed in the text box e.g. "2, 14"
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>(new Map());
 
-  const totalDays = getDaysInMonth(year, month);
-  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+  // Fetch departments once
+  useEffect(() => {
+    (async () => {
+      const res = await fetch('/api/departments');
+      const data: Department[] = await res.json();
+      const active = data.filter(d => d.is_active);
+      setDepartments(active);
+      if (active.length > 0 && !selectedDeptId) {
+        setSelectedDeptId(active[0].id);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedDept = useMemo(() => departments.find(d => d.id === selectedDeptId), [departments, selectedDeptId]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
 
-    // Fetch ALL active staff (global)
-    const staffRes = await fetch('/api/staff');
-    const staffData = await staffRes.json();
+    // Fetch all data in parallel (was 3 sequential calls → 1 batch)
+    const [staffRes, lvRes, statusRes] = await Promise.all([
+      fetch('/api/staff?t=' + Date.now(), { cache: 'no-store' }),
+      fetch(`/api/leaves?month=${selectedMonth}`),
+      fetch(`/api/monthly-status?month=${selectedMonth}`),
+    ]);
+
+    const [staffData, lvData, statusData] = await Promise.all([
+      staffRes.json(),
+      lvRes.json(),
+      statusRes.json(),
+    ]);
+
     setStaffList(staffData.filter((s: Staff) => s.is_active));
-
-    // Fetch ALL leaves for this month (global — no department_id)
-    const lvRes = await fetch(`/api/leaves?month=${monthStr}`);
-    const lvData = await lvRes.json();
     setLeaves(lvData);
-
-    // Fetch global review status for this month
-    const statusRes = await fetch(`/api/monthly-status?month=${monthStr}`);
-    const statusData = await statusRes.json();
     setIsReviewed(statusData.is_reviewed || false);
 
     setPendingChanges(new Map());
     setLoading(false);
-  }, [monthStr]);
+  }, [selectedMonth]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Fetch addons specifically for the selected department and month to hide addon staff
+  useEffect(() => {
+    async function loadAddons() {
+      if (!selectedDeptId || selectedDeptId === 'all') {
+        setAddonDeptIds(new Set());
+        return;
+      }
+      try {
+        const addonRes = await fetch(`/api/monthly-addons?department_id=${selectedDeptId}`);
+        if (addonRes.ok) {
+          const addonData = await addonRes.json();
+          const ids = new Set<string>((addonData || [])
+            .filter((a: any) => a.addon_department_id)
+            .map((a: any) => a.addon_department_id));
+          setAddonDeptIds(ids);
+        } else {
+          setAddonDeptIds(new Set());
+        }
+      } catch (e) {
+        setAddonDeptIds(new Set());
+      }
+    }
+    loadAddons();
+  }, [selectedDeptId, selectedMonth]);
 
   const toggleReviewed = async () => {
     const nextVal = !isReviewed;
     const res = await fetch('/api/monthly-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        month: monthStr,
-        is_reviewed: nextVal
-      }),
+      body: JSON.stringify({ month: selectedMonth, is_reviewed: nextVal }),
     });
     if (res.ok) {
       setIsReviewed(nextVal);
@@ -71,134 +111,157 @@ export default function AttendancePage() {
     }
   };
 
-  // Group saved leaves by date
-  const leavesByDate = useMemo(() => {
-    const map = new Map<string, StaffLeave[]>();
-    for (const lv of leaves) {
-      if (!map.has(lv.date)) map.set(lv.date, []);
-      map.get(lv.date)!.push(lv);
+  const filteredStaff = useMemo(() => {
+    if (selectedDeptId === 'all') {
+      return staffList;
     }
+    if (!selectedDeptId) return [];
+    
+    // Include staff assigned to this department
+    const baseStaff = staffList.filter(s => s.department_ids?.includes(selectedDeptId));
+    
+    // Exclude those who belong to an addon department (e.g., sweepers in ENT)
+    return baseStaff.filter(s => {
+      const ids = s.department_ids || [s.department_id];
+      return !ids.some(id => addonDeptIds.has(id));
+    });
+  }, [staffList, selectedDeptId, addonDeptIds]);
+
+  // Pre-calculate original string values (comma separated days) for each staff
+  const originalStrings = useMemo(() => {
+    const map: Record<string, string> = {};
+    leaves.forEach(lv => {
+      // both OFF and CL treated identically now, we just pull the date day
+      const dayStr = lv.date.split('-')[2];
+      const dayNum = parseInt(dayStr, 10);
+      if (!isNaN(dayNum)) {
+        if (!map[lv.staff_id]) map[lv.staff_id] = '';
+        if (map[lv.staff_id].length > 0) map[lv.staff_id] += ', ';
+        map[lv.staff_id] += dayNum;
+      }
+    });
+    // Sort the numbers for neatness
+    Object.keys(map).forEach(k => {
+      map[k] = map[k].split(', ').map(Number).sort((a,b) => a-b).join(', ');
+    });
     return map;
   }, [leaves]);
 
-  // Get the effective leave value for a cell
-  const getEffectiveValue = (staffId: string, dateStr: string): string => {
-    const key = `${dateStr}|${staffId}`;
-    if (pendingChanges.has(key)) {
-      return pendingChanges.get(key) || '';
+  const parseDays = (str: string) => {
+    return Array.from(new Set(
+      str.split(/[\s,]+/)
+         .map(s => parseInt(s, 10))
+         .filter(n => !isNaN(n) && n >= 1 && n <= 31)
+    )).sort((a, b) => a - b);
+  };
+
+  const getEffectiveValue = (staffId: string) => {
+    if (pendingChanges.has(staffId)) {
+      return pendingChanges.get(staffId)!;
     }
-    const dateLeaves = leavesByDate.get(dateStr) || [];
-    const lv = dateLeaves.find(l => l.staff_id === staffId);
-    return lv?.leave_type || '';
+    return originalStrings[staffId] || '';
   };
 
-  const isCellDirty = (staffId: string, dateStr: string): boolean => {
-    return pendingChanges.has(`${dateStr}|${staffId}`);
-  };
-
-  const handleLocalChange = (staffId: string, dateStr: string, nextType: string) => {
-    const key = `${dateStr}|${staffId}`;
-    const dateLeaves = leavesByDate.get(dateStr) || [];
-    const originalLv = dateLeaves.find(l => l.staff_id === staffId);
-    const originalVal = originalLv?.leave_type || '';
+  const handleLocalChange = (staffId: string, val: string) => {
+    const original = originalStrings[staffId] || '';
     
     setPendingChanges(prev => {
-      const next = new Map(prev);
-      if (nextType === originalVal) {
-        next.delete(key);
+      const nextMap = new Map(prev);
+      
+      const valParsed = parseDays(val).join(', ');
+      const origParsed = parseDays(original).join(', ');
+
+      if (valParsed === origParsed) {
+        nextMap.delete(staffId);
       } else {
-        next.set(key, nextType === '' ? null : nextType as LeaveType);
+        nextMap.set(staffId, val);
       }
-      return next;
+      return nextMap;
     });
   };
 
-  // Save all pending changes in one bulk request (no department_id)
-  const handleSaveAll = async () => {
-    if (pendingChanges.size === 0) {
-      addToast('info', 'No changes to save.');
-      return;
+  const handleDeptChange = (newDeptId: string) => {
+    if (pendingChanges.size > 0) {
+      const confirmed = window.confirm('You have unsaved changes. Switching departments will discard them. Continue?');
+      if (!confirmed) return;
+      setPendingChanges(new Map());
     }
+    setSelectedDeptId(newDeptId);
+  };
 
+  const handleMonthChange = (newMonth: string) => {
+    if (pendingChanges.size > 0) {
+      const confirmed = window.confirm('You have unsaved changes. Changing months will discard them. Continue?');
+      if (!confirmed) return;
+      setPendingChanges(new Map());
+    }
+    setSelectedMonth(newMonth);
+  };
+
+  const handleSaveAll = async () => {
+    if (pendingChanges.size === 0) return;
     setSaving(true);
     
-    const payload = Array.from(pendingChanges.entries()).map(([key, leaveType]) => {
-      const [dateStr, staffId] = key.split('|');
-      return {
-        staff_id: staffId,
-        date: dateStr,
-        leave_type: leaveType
-      };
-    });
+    const payload = Array.from(pendingChanges.entries()).map(([staffId, rawString]) => ({
+      staff_id: staffId,
+      off_dates: parseDays(rawString)
+    }));
 
     try {
-      const res = await fetch('/api/leaves/bulk', {
+      const res = await fetch('/api/leaves/monthly', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ month: selectedMonth, data: payload })
       });
 
       if (res.ok) {
-        addToast('success', `Saved ${payload.length} attendance change(s)`);
+        addToast('success', `Saved attendance for ${selectedMonth}`);
         await loadData();
       } else {
-        addToast('error', 'Failed to save attendance changes');
+        addToast('error', 'Failed to save attendance');
       }
     } catch {
       addToast('error', 'Network error while saving');
     }
-
     setSaving(false);
   };
 
   const hasChanges = pendingChanges.size > 0;
-
-  // Group staff by department for organized display
-  const staffByDept = useMemo(() => {
-    const map = new Map<string, Staff[]>();
-    for (const s of staffList) {
-      const deptName = s.departments?.name || 'Unknown';
-      if (!map.has(deptName)) map.set(deptName, []);
-      map.get(deptName)!.push(s);
-    }
-    return map;
-  }, [staffList]);
+  const monthName = MONTHS[parseInt(selectedMonth.split('-')[1]) - 1];
 
   return (
-    <div>
+    <div className="max-w-5xl mx-auto">
       <div className="page-header">
-        <div className="flex flex-col md:flex-row gap-4 justify-between md:items-end mb-8">
+        <div className="flex flex-col md:flex-row gap-4 justify-between md:items-end mb-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Attendance Log</h1>
-            <p className="text-slate-400 text-sm">Global attendance — applies across all departments.</p>
+            <p className="text-slate-400 text-sm">
+              Enter the exact dates (e.g. "3, 14, 25") each staff member took an OFF.
+            </p>
           </div>
-          <div className="flex gap-4 items-center">
+          <div className="flex gap-3 items-center">
             {hasChanges && (
-              <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-full">
-                {pendingChanges.size} unsaved change{pendingChanges.size > 1 ? 's' : ''}
+              <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-full ring-1 ring-amber-500/20">
+                Unsaved changes
               </span>
             )}
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-800/80 px-2 py-1 rounded-md border border-slate-700 uppercase tracking-tighter">
+              Global Attendance
+            </span>
             <button
               onClick={handleSaveAll}
               disabled={!hasChanges || saving}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg ${
-                hasChanges 
-                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                hasChanges ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
-              {saving ? (
-                <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Saving...</>
-              ) : (
-                <><Save size={18} /> Save All</>
-              )}
+              {saving ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <Save size={18} />}
+              Save All
             </button>
             <button
               onClick={toggleReviewed}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                isReviewed 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                  : 'bg-amber-500 text-white shadow-lg'
+                isReviewed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500 text-white shadow-lg'
               }`}
             >
               {isReviewed ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
@@ -208,30 +271,32 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <div className="glass-card mb-6" style={{ padding: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+      <div className="glass-card mb-6" style={{ padding: '20px' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Month</label>
-            <select
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <Calendar size={12} className="inline mr-1 -mt-0.5" /> Month
+            </label>
+            <input 
+              type="month"
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>{m}</option>
-              ))}
-            </select>
+              value={selectedMonth}
+              onChange={(e) => handleMonthChange(e.target.value)}
+            />
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Year</label>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <Filter size={12} className="inline mr-1 -mt-0.5" /> Department Filter
+            </label>
             <select
               className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+              value={selectedDeptId}
+              onChange={(e) => handleDeptChange(e.target.value)}
             >
-              {[year - 1, year, year + 1].map((y) => (
-                <option key={y} value={y}>{y}</option>
+              <option value="" disabled>Select Department</option>
+              <option value="all">🏢 ALL STAFF (Global)</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
@@ -240,108 +305,82 @@ export default function AttendancePage() {
 
       {loading ? (
         <div className="glass-card empty-state">
-          <div className="spinner" style={{ margin: '0 auto 16px', width: '24px', height: '24px' }}></div>
+          <div className="spinner" style={{ margin: '0 auto 16px' }} />
           <p className="text-slate-400">Loading attendance data...</p>
         </div>
-      ) : staffList.length === 0 ? (
+      ) : !selectedDeptId ? (
         <div className="glass-card empty-state">
-          <p style={{ fontSize: '16px', fontWeight: 500 }}>No active staff found</p>
+          <p className="text-lg font-medium">Select a department to view staff</p>
+        </div>
+      ) : filteredStaff.length === 0 ? (
+        <div className="glass-card empty-state">
+          <p className="text-lg font-medium">No staff found in this department</p>
         </div>
       ) : (
         <div className="glass-card p-0 overflow-hidden border border-slate-700/50">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-800/50 border-b border-slate-700/50">
-                <th className="px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider w-24 border-r border-slate-700/50 align-top">Date</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Staff Attendance Status</th>
+              <tr className="bg-slate-800/50 border-b border-slate-700/50 text-slate-300">
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider">Staff Member</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider w-1/2">Absence Dates ({monthName})</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-center w-32">Total OFFs</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/30">
-              {Array.from({ length: totalDays }).map((_, i) => {
-                const day = i + 1;
-                const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
-                
+              {filteredStaff.map(staff => {
+                const currentStr = getEffectiveValue(staff.id);
+                const dirty = pendingChanges.has(staff.id);
+                const offCount = parseDays(currentStr).length;
+
                 return (
-                  <tr key={dateStr} className="hover:bg-slate-800/30 transition-colors group">
-                    <td className="px-6 py-4 border-r border-slate-700/30 align-top">
-                      <span className="font-bold text-white text-lg">
-                        {String(day).padStart(2, '0')}
-                      </span>
+                  <tr key={staff.id} className={`transition-colors group ${dirty ? 'bg-amber-500/5' : 'hover:bg-slate-800/30'}`}>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-200">{staff.name}</span>
+                          {staff.staff_code && (
+                            <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono border border-slate-700">
+                              {staff.staff_code}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-500 uppercase mt-1">{staff.role}</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
-                      {/* Group staff by department */}
-                      {Array.from(staffByDept.entries()).map(([deptName, deptStaff]) => (
-                        <div key={deptName} className="mb-3 last:mb-0">
-                          <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">{deptName}</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                            {deptStaff.map(staff => {
-                              const currentVal = getEffectiveValue(staff.id, dateStr);
-                              const dirty = isCellDirty(staff.id, dateStr);
-                              
-                              return (
-                                <div 
-                                  key={`${dateStr}-${staff.id}`} 
-                                  className={`flex flex-col p-3 rounded-lg border shadow-sm transition hover:bg-slate-800/60 ${
-                                    dirty 
-                                      ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' 
-                                      : 'border-slate-700/50 bg-slate-800/30'
-                                  }`}
-                                >
-                                  <div className="flex justify-between items-center mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-semibold text-sm text-slate-200">{staff.name}</span>
-                                      {staff.is_general && (
-                                        <span style={{
-                                          fontSize: '9px',
-                                          fontWeight: 700,
-                                          padding: '1px 6px',
-                                          borderRadius: '10px',
-                                          background: 'rgba(168, 85, 247, 0.15)',
-                                          color: '#c084fc',
-                                          letterSpacing: '0.5px',
-                                        }}>GEN</span>
-                                      )}
-                                    </div>
-                                    <span className="text-[10px] text-slate-500 uppercase">{staff.role}</span>
-                                  </div>
-                                  <select 
-                                    className={`text-xs font-semibold rounded-md border px-2 py-1.5 outline-none transition-colors w-full cursor-pointer ${
-                                      currentVal === 'OFF' ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30' : 
-                                      currentVal === 'CL' ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 hover:bg-amber-500/30' : 
-                                      'bg-slate-900/50 border-slate-600/50 text-slate-300 hover:border-slate-500'
-                                    }`}
-                                    value={currentVal}
-                                    onChange={(e) => handleLocalChange(staff.id, dateStr, e.target.value)}
-                                  >
-                                    <option value="" className="bg-slate-800 text-slate-300">Present (Default)</option>
-                                    <option value="OFF" className="bg-slate-800 text-red-400">OFF</option>
-                                    <option value="CL" className="bg-slate-800 text-amber-400">CL</option>
-                                  </select>
-                                </div>
-                              );
-                            })}
-                          </div>
+                        <div className="relative flex items-center gap-2">
+                          <input 
+                            type="text"
+                            className={`flex-1 bg-slate-900 border text-white rounded-lg px-4 py-2.5 focus:outline-none transition-colors ${
+                              dirty 
+                                ? 'border-amber-500' 
+                                : 'border-slate-700 focus:border-emerald-500'
+                            }`}
+                            value={currentStr}
+                            placeholder="e.g. 2, 5, 14, 25"
+                            onChange={(e) => handleLocalChange(staff.id, e.target.value)}
+                          />
+                          {currentStr && (
+                            <button
+                              onClick={() => handleLocalChange(staff.id, '')}
+                              className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+                              title="Clear all dates"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
                         </div>
-                      ))}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`text-lg font-bold ${offCount > 0 ? 'text-red-400' : 'text-slate-600'}`}>
+                        {offCount}
+                      </span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Floating Save Bar */}
-      {hasChanges && !saving && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-          <button
-            onClick={handleSaveAll}
-            className="flex items-center gap-3 px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-sm font-bold shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105"
-          >
-            <Save size={20} />
-            Save {pendingChanges.size} Change{pendingChanges.size > 1 ? 's' : ''}
-          </button>
         </div>
       )}
     </div>

@@ -18,7 +18,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       department_percentages: body.department_percentages || {},
       role: body.role, 
       is_active: body.is_active,
-      staff_code: body.staff_code 
+      staff_code: body.staff_code?.trim() || null 
     })
     .eq('id', id)
     .select('*, departments(*)')

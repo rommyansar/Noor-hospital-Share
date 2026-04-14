@@ -141,65 +141,60 @@ async function processAddons(
       const overridePct = staff.department_percentages?.[addonDeptId];
       const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : (parseFloat(rule.percentage) || 0);
 
-      const calcType = addon.calculation_type || 'individual';
+      // Always use rule's distribution_type — not addon config
+      const distType = rule.distribution_type || 'individual';
       const attRule = addon.attendance_rule || 'none';
 
-      let share = 0;
-      let poolAmount = 0;
-      let presentCount = 1;
       const absentDays = getAbsentDays(staff.id);
       const presentDays = daysInMonth - absentDays;
+      const presentCount = distType === 'group' ? (roleCounts[userRole] || 1) : 1;
 
-      if (calcType === 'group') {
-        presentCount = roleCounts[userRole] || 1;
-        poolAmount = Math.round(pool * (effectivePct / 100) * 100) / 100;
-        share = Math.round((poolAmount / presentCount) * 100) / 100;
-      } else {
-        // Individual: share = pool (ignores effectivePct, matches UI logic)
-        share = pool;
-      }
+      // ── CORRECT ADD-ON SEQUENCE: TDA → Add-On% → Attendance → Group ──
 
-      // Apply attendance rule
+      // Step 1: pool = mainIncome × addonPct (already computed above as `pool`)
+      // Step 2: Apply attendance reduction per staff
+      let adjustedPool = pool;
       let noteExtra = '';
-      let ratio = 1;
       if ((attRule === 'monthly' || attRule === 'daily') && daysInMonth > 0) {
-        ratio = presentDays / daysInMonth;
-        share = Math.round(share * ratio * 100) / 100;
+        const ratio = presentDays / daysInMonth;
+        adjustedPool = Math.round(pool * ratio * 100) / 100;
         noteExtra = ` (Prorated ${presentDays}/${daysInMonth})`;
       } else {
         noteExtra = ' (No attendance)';
       }
 
-      const pctStrDisplay = effectivePct.toString();
-      
-      // Calculate a "virtual" income amount that makes sense mathematically on the exported reports
-      // Since report shows `Work Amount * percentage = Share`, we need Work Amount = Share / percentage
-      let virtualIncome = 0;
-      if (effectivePct > 0) {
-          virtualIncome = Math.round((share / (effectivePct / 100)) * 100) / 100;
+      // Step 3: Apply group distribution (divide by total staff in role)
+      let share = 0;
+      if (distType === 'group') {
+        share = Math.round((adjustedPool / presentCount) * 100) / 100;
+      } else {
+        share = adjustedPool;
       }
+
+      const pctStrDisplay = addonPct.toString();
 
       if (share > 0) {
         results.push({
           staff_id: staff.id,
           department_id: mainDeptId,
           date: `${month}-01`,
-          income_amount: virtualIncome || pool,
+          income_amount: mainIncome,
           calculation_type: 'rule',
           rule_percentage: pctStrDisplay,
-          distribution_type: calcType,
-          pool_amount: poolAmount,
+          distribution_type: distType,
+          pool_amount: pool,
           present_count: presentCount,
           final_share: share,
           breakdown: {
             role: staff.role,
-            percentage: `${effectivePct}%`,
+            percentage: `${addonPct}%`,
             type: 'addon_share',
             note: `Add-on: ${addonDeptName} from ${mainDeptName}${noteExtra}`,
             addon_department: addonDeptName,
             addon_pct: `${addonPct}%`,
             addon_pool: pool,
-            calculation_type: calcType,
+            adjusted_pool: adjustedPool,
+            distribution_type: distType,
             attendance_rule: attRule,
             total_days: daysInMonth,
             present_days: presentDays,
@@ -381,6 +376,13 @@ export async function POST(req: Request) {
         const applyProration = dept.attendance_rule === 'monthly';
         const totalWorkingDays = daysInMonth;
 
+        // Count staff per role for group distribution
+        const staffCountByRole: Record<string, number> = {};
+        for (const s of staffData) {
+          const rk = s.role.toUpperCase().trim();
+          staffCountByRole[rk] = (staffCountByRole[rk] || 0) + 1;
+        }
+
         for (const staff of staffData) {
           const stored = amounts.find((a: any) => a.staff_id === staff.id);
           if (!stored || stored.amount <= 0) continue;
@@ -390,7 +392,8 @@ export async function POST(req: Request) {
           if (!rule) continue;
 
           const override = overrideMap[staff.id];
-          const distType = override?.distribution_type || rule.distribution_type;
+          // Always use rule's distribution_type — override rows default to 'individual' in DB
+          const distType = rule.distribution_type;
           const pctStr = override?.percentage !== null && override?.percentage !== undefined
             ? override.percentage.toString()
             : getStaffPercentage(staff, dept.id, rule.percentage);
@@ -404,8 +407,17 @@ export async function POST(req: Request) {
           const presentDays = totalWorkingDays - absentDays;
           const prorateRatio = applyProration ? (presentDays / totalWorkingDays) : 1;
 
-          // Apply percentage to the staff's adjusted work amount (NOT dept total)
-          let share = computeIndividualShare(stored.amount, pctStr);
+          // Apply percentage based on distribution type
+          let share = 0;
+          let poolAmount = 0;
+          let presentCount = 1;
+          if (distType === 'group') {
+            presentCount = staffCountByRole[userRole] || 1;
+            share = computeGroupShare(stored.amount, pctStr, presentCount);
+            poolAmount = computePoolAmount(stored.amount, pctStr);
+          } else {
+            share = computeIndividualShare(stored.amount, pctStr);
+          }
 
           // Apply attendance proration if applicable
           if (applyProration) {
@@ -416,11 +428,11 @@ export async function POST(req: Request) {
             staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
             income_amount: stored.amount, calculation_type: 'rule',
             rule_percentage: pctStr, distribution_type: distType,
-            pool_amount: 0, present_count: 1, final_share: share,
+            pool_amount: poolAmount, present_count: presentCount, final_share: share,
             breakdown: {
               note: applyProration
-                ? `Staff work amount × ${parsePercentage(pctStr)}% (Prorated ${presentDays}/${totalWorkingDays})`
-                : `Staff work amount × ${parsePercentage(pctStr)}%`,
+                ? `Staff work amount × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} staff` : ''} (Prorated ${presentDays}/${totalWorkingDays})`
+                : `Staff work amount × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} staff` : ''}`,
               role: staff.role,
               percentage: `${parsePercentage(pctStr)}%`,
               gross_income: stored.amount,
@@ -454,7 +466,8 @@ export async function POST(req: Request) {
       const applyProration = dept.attendance_rule === 'monthly';
       const presentCountByRole: Record<string, number> = {};
       for (const s of staffData) {
-        presentCountByRole[s.role] = (presentCountByRole[s.role] || 0) + 1;
+        const rk = s.role.toUpperCase().trim();
+        presentCountByRole[rk] = (presentCountByRole[rk] || 0) + 1;
       }
 
       for (const staff of staffData) {
@@ -463,7 +476,8 @@ export async function POST(req: Request) {
         if (!rule) continue;
 
         const override = overrideMap[staff.id];
-        const distType = override?.distribution_type || rule.distribution_type;
+        // Always use rule's distribution_type — override rows default to 'individual' in DB
+        const distType = rule.distribution_type;
         const pctStr = override?.percentage !== null && override?.percentage !== undefined
           ? override.percentage.toString()
           : getStaffPercentage(staff, dept.id, rule.percentage);
@@ -476,7 +490,7 @@ export async function POST(req: Request) {
         let presentCount = 1;
 
         if (distType === 'group') {
-          presentCount = presentCountByRole[staff.role] || 1;
+          presentCount = presentCountByRole[userRole] || 1;
           baseShare = computeGroupShare(totalMonthlyIncome, pctStr, presentCount);
           poolAmount = computePoolAmount(totalMonthlyIncome, pctStr);
         } else {
@@ -539,7 +553,8 @@ export async function POST(req: Request) {
 
         const presentCountByRole: Record<string, number> = {};
         for (const s of presentStaff) {
-          presentCountByRole[s.role] = (presentCountByRole[s.role] || 0) + 1;
+          const rk = s.role.toUpperCase().trim();
+          presentCountByRole[rk] = (presentCountByRole[rk] || 0) + 1;
         }
 
         const dayWorkEntries = workData?.filter((w: any) => w.date === dateStr) || [];
@@ -574,7 +589,8 @@ export async function POST(req: Request) {
           if (!rule) continue;
 
           const override = overrideMap[staff.id];
-          const distType = override?.distribution_type || rule.distribution_type;
+          // Always use rule's distribution_type — override rows default to 'individual' in DB
+          const distType = rule.distribution_type;
           const pctStr = override?.percentage !== null && override?.percentage !== undefined
             ? override.percentage.toString()
             : getStaffPercentage(staff, dept.id, rule.percentage);
@@ -584,7 +600,7 @@ export async function POST(req: Request) {
           let presentCount = 1;
 
           if (distType === 'group') {
-            presentCount = presentCountByRole[staff.role] || 1;
+            presentCount = presentCountByRole[userRole] || 1;
             share = computeGroupShare(adjustedIncome, pctStr, presentCount);
             poolAmount = computePoolAmount(adjustedIncome, pctStr);
           } else {

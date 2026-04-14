@@ -722,15 +722,18 @@ export default function MonthlyEntryPage() {
         });
 
         // === Add-On Department Staff ===
-        // CORRECTED: pool = mainIncome × addonPct, share = pool × rolePct
         const addonSections: { deptId: string; deptName: string; deduction: number; pct: number; calcType: string; attRule: string; rows: RowData[] }[] = [];
         for (const addon of addons.filter(a => a.addon_department_id && a.percentage > 0)) {
           const addonDept = departments.find(d => d.id === addon.addon_department_id);
           const aStaff = addonStaffMap[addon.addon_department_id] || [];
           const aRules = addonRulesMap[addon.addon_department_id] || [];
+          const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0 
+            ? addon.applied_rules 
+            : aRules.map(r => r.id);
+          const activeRules = aRules.filter(r => activeRuleIds.includes(r.id));
+          
           // Pool from MAIN department income
           const pool = tda > 0 ? Math.round(tda * (addon.percentage / 100) * 100) / 100 : 0;
-          const addonCalcType = addon.calculation_type || 'individual';
           const addonAttRule = addon.attendance_rule || 'none';
 
           const aRoleCounts: Record<string, number> = {};
@@ -739,10 +742,15 @@ export default function MonthlyEntryPage() {
             aRoleCounts[rk] = (aRoleCounts[rk] || 0) + 1;
           });
 
+          // Overall Calculation Type for UI display
+          const hasGroup = activeRules.some(r => r.distribution_type === 'group');
+          const hasIndividual = activeRules.some(r => r.distribution_type === 'individual' || !r.distribution_type);
+          const overallCalcType = hasGroup && hasIndividual ? 'mixed' : hasGroup ? 'group' : 'individual';
+
           const aRows: RowData[] = aStaff.map(s => {
             const rKey = s.role.toUpperCase().trim();
             // Use addon department's own rules
-            const rule = aRules.find(r => r.role.toUpperCase().trim() === rKey);
+            const rule = aRules.find(r => r.role.toUpperCase().trim() === rKey && activeRuleIds.includes(r.id));
             const absentDays = getAbsentDays(s.id);
             const workingDays = totalDays - absentDays;
 
@@ -755,26 +763,26 @@ export default function MonthlyEntryPage() {
             let amount = 0;
             let poolTotal = 0;
             let adjustedBase = pool;
+            const distType = rule.distribution_type || 'individual';
 
             if (pool > 0) {
-              // Calculate base share from pool
-              if (addonCalcType === 'group') {
-                poolTotal = Math.round(pool * (effectivePct / 100) * 100) / 100;
+              // Apply attendance FIRST
+              if (addonAttRule === 'monthly' || addonAttRule === 'daily') {
+                const ratio = totalDays > 0 ? (workingDays / totalDays) : 1;
+                adjustedBase = Math.round(pool * ratio * 100) / 100;
+              }
+
+              // Calculate final share
+              if (distType === 'group') {
+                poolTotal = adjustedBase;
                 const count = aRoleCounts[rKey] || 1;
                 amount = Math.round((poolTotal / count) * 100) / 100;
               } else {
-                amount = pool;
-              }
-
-              // Apply attendance
-              if (addonAttRule === 'monthly' || addonAttRule === 'daily') {
-                const ratio = totalDays > 0 ? (workingDays / totalDays) : 1;
-                amount = Math.round(amount * ratio * 100) / 100;
-                adjustedBase = Math.round(pool * ratio * 100) / 100;
+                amount = adjustedBase;
               }
             }
             const workAmount = parseFloat(staffAmounts[s.id]) || 0;
-            return { staff: s, rule, pct: effectivePct, distType: addonCalcType, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'addon', adjustedBase, workAmount };
+            return { staff: s, rule, pct: effectivePct, distType, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'addon', adjustedBase, workAmount };
           });
 
           addonSections.push({
@@ -782,7 +790,7 @@ export default function MonthlyEntryPage() {
             deptName: addonDept?.name || 'Unknown',
             deduction: pool,
             pct: addon.percentage,
-            calcType: addonCalcType,
+            calcType: overallCalcType,
             attRule: addonAttRule,
             rows: aRows
           });
@@ -902,8 +910,8 @@ export default function MonthlyEntryPage() {
                         <td colSpan={colCount} style={{ padding: '8px 20px', fontSize: '12px', fontWeight: 700, color: '#fbbf24', letterSpacing: '0.5px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <span style={{ textTransform: 'uppercase' }}>⚡ {sec.deptName} (Add-On {sec.pct}%)</span>
-                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: sec.calcType === 'group' ? 'rgba(245,158,11,0.2)' : 'rgba(96,165,250,0.2)', color: sec.calcType === 'group' ? '#fbbf24' : '#60a5fa' }}>
-                              {sec.calcType === 'group' ? '👥 Group' : '👤 Individual'}
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: sec.calcType === 'group' ? 'rgba(245,158,11,0.2)' : sec.calcType === 'mixed' ? 'rgba(168,85,247,0.2)' : 'rgba(96,165,250,0.2)', color: sec.calcType === 'group' ? '#fbbf24' : sec.calcType === 'mixed' ? '#c084fc' : '#60a5fa' }}>
+                              {sec.calcType === 'group' ? '👥 Group' : sec.calcType === 'mixed' ? '🔄 Mixed' : '👤 Individual'}
                             </span>
                             <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: sec.attRule === 'daily' ? 'rgba(16,185,129,0.2)' : sec.attRule === 'monthly' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)', color: sec.attRule === 'daily' ? '#34d399' : sec.attRule === 'monthly' ? '#fbbf24' : '#f87171' }}>
                               {sec.attRule === 'daily' ? '📅 Daily' : sec.attRule === 'monthly' ? '📊 Monthly' : '🚫 None'}
@@ -1121,9 +1129,21 @@ export default function MonthlyEntryPage() {
                           <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Selected:</span>
                           <span style={{ fontSize: '11px', fontWeight: 700, color: '#f8fafc' }}>{targetDept.name}</span>
                           <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700 }}>{addon.percentage}%</span>
-                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: (addon.calculation_type || 'individual') === 'group' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.15)', color: (addon.calculation_type || 'individual') === 'group' ? '#fbbf24' : '#60a5fa', fontWeight: 700 }}>
-                            {(addon.calculation_type || 'individual') === 'group' ? 'Group' : 'Individual'}
-                          </span>
+                          {(() => {
+                            const aRules = addonRulesMap[addon.addon_department_id] || [];
+                            const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : aRules.map(r => r.id);
+                            const activeRules = aRules.filter(r => activeRuleIds.includes(r.id));
+                            const hasGroup = activeRules.some(r => r.distribution_type === 'group');
+                            const hasInd = activeRules.some(r => r.distribution_type === 'individual' || !r.distribution_type);
+                            const label = hasGroup && hasInd ? 'Mixed' : hasGroup ? 'Group' : 'Individual';
+                            const color = label === 'Group' ? '#fbbf24' : label === 'Mixed' ? '#c084fc' : '#60a5fa';
+                            const bg = label === 'Group' ? 'rgba(245,158,11,0.15)' : label === 'Mixed' ? 'rgba(168,85,247,0.15)' : 'rgba(96,165,250,0.15)';
+                            return (
+                              <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: bg, color: color, fontWeight: 700 }}>
+                                {label}
+                              </span>
+                            );
+                          })()}
                           <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: (addon.attendance_rule || 'none') === 'daily' ? 'rgba(16,185,129,0.15)' : (addon.attendance_rule || 'none') === 'monthly' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: (addon.attendance_rule || 'none') === 'daily' ? '#34d399' : (addon.attendance_rule || 'none') === 'monthly' ? '#fbbf24' : '#f87171', fontWeight: 700 }}>
                             {(addon.attendance_rule || 'none') === 'daily' ? 'Daily Att.' : (addon.attendance_rule || 'none') === 'monthly' ? 'Monthly Att.' : 'No Att.'}
                           </span>

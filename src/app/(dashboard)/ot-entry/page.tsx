@@ -197,119 +197,114 @@ export default function OTEntryPage() {
       {/* Grid Area */}
       <div className="glass-card mb-8 overflow-hidden" style={{ padding: 0 }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '1600px' }}>
+          <table className="w-full text-left border-collapse" style={{ minWidth: '2200px' }}>
             <thead>
               <tr className="bg-slate-800/50 border-b border-slate-700">
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Date</th>
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Case Type</th>
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Amount (₹)</th>
+                <th className="p-4 text-sm font-semibold text-slate-400 uppercase">Date</th>
+                <th className="p-4 text-sm font-semibold text-slate-400 uppercase">Case Type</th>
+                <th className="p-4 text-sm font-semibold text-slate-400 uppercase">Amount (₹)</th>
                 
                 {/* Doctor Section */}
-                <th className="p-3 text-xs font-semibold text-emerald-400 uppercase border-l border-slate-700 bg-emerald-500/5">Doctor (Main)</th>
-                <th className="p-3 text-xs font-semibold text-emerald-400 uppercase border-r border-slate-700 bg-emerald-500/5 text-center">%</th>
+                <th className="p-4 text-sm font-semibold text-emerald-400 uppercase border-l border-slate-700 bg-emerald-500/5">Doctor (Main)</th>
+                <th className="p-4 text-sm font-semibold text-emerald-400 uppercase border-r border-slate-700 bg-emerald-500/5 text-center">%</th>
                 
                 {/* Assist Doctor Section */}
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase border-l border-slate-700 bg-blue-500/5">Assist Doctor</th>
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase bg-blue-500/5 text-center">%</th>
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase border-r border-slate-700 bg-blue-500/5">Mode</th>
+                <th className="p-4 text-sm font-semibold text-blue-400 uppercase border-l border-slate-700 bg-blue-500/5">Assist Doctor</th>
+                <th className="p-4 text-sm font-semibold text-blue-400 uppercase bg-blue-500/5 text-center">%</th>
+                <th className="p-4 text-sm font-semibold text-blue-400 uppercase border-r border-slate-700 bg-blue-500/5">Mode</th>
                 
                 {/* Assist Nurse Section */}
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase border-l border-slate-700 bg-purple-500/5">Assist Nurse</th>
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase bg-purple-500/5 text-center">%</th>
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase border-r border-slate-700 bg-purple-500/5">Mode</th>
+                <th className="p-4 text-sm font-semibold text-purple-400 uppercase border-l border-slate-700 bg-purple-500/5">Assist Nurse</th>
+                <th className="p-4 text-sm font-semibold text-purple-400 uppercase bg-purple-500/5 text-center">%</th>
+                <th className="p-4 text-sm font-semibold text-purple-400 uppercase border-r border-slate-700 bg-purple-500/5">Mode</th>
 
                 {/* Paramedical Section */}
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase border-l border-slate-700 bg-orange-500/5">Paramedical</th>
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase bg-orange-500/5 text-center">%</th>
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase border-r border-slate-700 bg-orange-500/5">Mode</th>
+                <th className="p-4 text-sm font-semibold text-orange-400 uppercase border-l border-slate-700 bg-orange-500/5">Paramedical</th>
+                <th className="p-4 text-sm font-semibold text-orange-400 uppercase bg-orange-500/5 text-center">%</th>
+                <th className="p-4 text-sm font-semibold text-orange-400 uppercase border-r border-slate-700 bg-orange-500/5">Mode</th>
                 
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase text-center">Actions</th>
+                <th className="p-4 text-sm font-semibold text-slate-400 uppercase text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {cases.map((c, i) => (
                 <tr key={c.id || i} className="border-b border-slate-700/50 hover:bg-slate-800/30 transition-colors">
-                  <td className="p-2">
+                  <td className="p-3">
                     <input 
                       type="date" 
                       value={c.date || ''} 
                       onChange={(e) => updateCase(c.id!, 'date', e.target.value)}
                       className="text-input" 
-                      style={{ padding: '6px', fontSize: '13px', width: '130px' }}
+                      style={{ padding: '8px 12px', fontSize: '14px', width: '160px' }}
                     />
                   </td>
-                  <td className="p-2">
+                  <td className="p-3">
                     <select 
                       value={c.case_type || 'Major'} 
                       onChange={(e) => updateCase(c.id!, 'case_type', e.target.value)}
                       className="select-field"
-                      style={{ padding: '6px', fontSize: '13px' }}
+                      style={{ padding: '8px 12px', fontSize: '14px', width: '120px' }}
                     >
                       <option>Major</option>
                       <option>Minor</option>
                     </select>
                   </td>
-                  <td className="p-2">
+                  <td className="p-3">
                     <input 
                       type="number" 
                       value={c.amount || ''} 
                       onChange={(e) => updateCase(c.id!, 'amount', e.target.value)}
-                      className="text-input" 
-                      style={{ padding: '6px', fontSize: '13px', width: '100px' }}
+                      className="text-input font-bold text-emerald-400" 
+                      style={{ padding: '8px 12px', fontSize: '15px', width: '140px' }}
                       placeholder="₹0"
                     />
                   </td>
 
                   {/* Doctor (Main) */}
-                  <td className="p-2 border-l border-slate-700/50 bg-emerald-500/5">
-                    <select
-                      value={c.doctor_id || ''}
-                      onChange={(e) => updateCase(c.id!, 'doctor_id', e.target.value)}
-                      className="select-field"
-                      style={{ padding: '6px', fontSize: '13px', width: '150px' }}
-                    >
-                      <option value="">Select Doctor...</option>
-                      {staffList.filter(s => s.role.toLowerCase().includes('doctor')).map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                  <td className="p-3 border-l border-slate-700/50 bg-emerald-500/5" style={{ minWidth: '220px' }}>
+                    <SingleSelect
+                      options={staffList.map(s => ({ value: s.id, label: s.name }))}
+                      value={c.doctor_id || null}
+                      onChange={(val) => updateCase(c.id!, 'doctor_id', val)}
+                      placeholder="Select Doctor..."
+                    />
                   </td>
-                  <td className="p-2 border-r border-slate-700/50 bg-emerald-500/5">
+                  <td className="p-3 border-r border-slate-700/50 bg-emerald-500/5">
                     <input 
                       type="number" 
                       value={c.doctor_pct || ''} 
                       onChange={(e) => updateCase(c.id!, 'doctor_pct', e.target.value)}
-                      className="text-input text-center" 
-                      style={{ padding: '6px', fontSize: '13px', width: '60px' }}
+                      className="text-input text-center font-bold" 
+                      style={{ padding: '8px 4px', fontSize: '14px', width: '80px' }}
                       placeholder="%"
                     />
                   </td>
 
                   {/* Assist Doctor */}
-                  <td className="p-2 border-l border-slate-700/50 bg-blue-500/5">
+                  <td className="p-3 border-l border-slate-700/50 bg-blue-500/5" style={{ minWidth: '220px' }}>
                     <MultiSelect 
-                      options={staffList.filter(s => s.role.toLowerCase().includes('doctor')).map(s => ({ value: s.id, label: s.name }))}
+                      options={staffList.map(s => ({ value: s.id, label: s.name }))}
                       selected={c.assist_doctor_ids || []}
                       onChange={(vals) => updateCase(c.id!, 'assist_doctor_ids', vals)}
                       placeholder="Assist Docs..."
                     />
                   </td>
-                  <td className="p-2 bg-blue-500/5">
+                  <td className="p-3 bg-blue-500/5">
                     <input 
                       type="number" 
                       value={c.assist_doctor_pct || ''} 
                       onChange={(e) => updateCase(c.id!, 'assist_doctor_pct', e.target.value)}
-                      className="text-input text-center" 
-                      style={{ padding: '6px', fontSize: '13px', width: '60px' }}
+                      className="text-input text-center font-bold" 
+                      style={{ padding: '8px 4px', fontSize: '14px', width: '80px' }}
                       placeholder="%"
                     />
                   </td>
-                  <td className="p-2 border-r border-slate-700/50 bg-blue-500/5">
+                  <td className="p-3 border-r border-slate-700/50 bg-blue-500/5">
                     <select 
                       value={c.assist_doctor_mode || 'group'} 
                       onChange={(e) => updateCase(c.id!, 'assist_doctor_mode', e.target.value)}
                       className="select-field"
-                      style={{ padding: '6px', fontSize: '12px' }}
+                      style={{ padding: '8px', fontSize: '14px', width: '100px' }}
                     >
                       <option value="group">Group</option>
                       <option value="individual">Indiv</option>
@@ -317,30 +312,30 @@ export default function OTEntryPage() {
                   </td>
 
                   {/* Assist Nurse */}
-                  <td className="p-2 border-l border-slate-700/50 bg-purple-500/5">
+                  <td className="p-3 border-l border-slate-700/50 bg-purple-500/5" style={{ minWidth: '220px' }}>
                     <MultiSelect 
-                      options={staffList.filter(s => s.role.toLowerCase().includes('nurse')).map(s => ({ value: s.id, label: s.name }))}
+                      options={staffList.map(s => ({ value: s.id, label: s.name }))}
                       selected={c.assist_nurse_ids || []}
                       onChange={(vals) => updateCase(c.id!, 'assist_nurse_ids', vals)}
                       placeholder="Nurses..."
                     />
                   </td>
-                  <td className="p-2 bg-purple-500/5">
+                  <td className="p-3 bg-purple-500/5">
                     <input 
                       type="number" 
                       value={c.assist_nurse_pct || ''} 
                       onChange={(e) => updateCase(c.id!, 'assist_nurse_pct', e.target.value)}
-                      className="text-input text-center" 
-                      style={{ padding: '6px', fontSize: '13px', width: '60px' }}
+                      className="text-input text-center font-bold" 
+                      style={{ padding: '8px 4px', fontSize: '14px', width: '80px' }}
                       placeholder="%"
                     />
                   </td>
-                  <td className="p-2 border-r border-slate-700/50 bg-purple-500/5">
+                  <td className="p-3 border-r border-slate-700/50 bg-purple-500/5">
                     <select 
                       value={c.assist_nurse_mode || 'group'} 
                       onChange={(e) => updateCase(c.id!, 'assist_nurse_mode', e.target.value)}
                       className="select-field"
-                      style={{ padding: '6px', fontSize: '12px' }}
+                      style={{ padding: '8px', fontSize: '14px', width: '100px' }}
                     >
                       <option value="group">Group</option>
                       <option value="individual">Indiv</option>
@@ -348,30 +343,30 @@ export default function OTEntryPage() {
                   </td>
 
                   {/* Paramedical */}
-                  <td className="p-2 border-l border-slate-700/50 bg-orange-500/5">
+                  <td className="p-3 border-l border-slate-700/50 bg-orange-500/5" style={{ minWidth: '220px' }}>
                     <MultiSelect 
-                      options={staffList.filter(s => s.role.toLowerCase().includes('paramedic') || s.role.toLowerCase().includes('tech')).map(s => ({ value: s.id, label: s.name }))}
+                      options={staffList.map(s => ({ value: s.id, label: s.name }))}
                       selected={c.paramedical_ids || []}
                       onChange={(vals) => updateCase(c.id!, 'paramedical_ids', vals)}
                       placeholder="Params..."
                     />
                   </td>
-                  <td className="p-2 bg-orange-500/5">
+                  <td className="p-3 bg-orange-500/5">
                     <input 
                       type="number" 
                       value={c.paramedical_pct || ''} 
                       onChange={(e) => updateCase(c.id!, 'paramedical_pct', e.target.value)}
-                      className="text-input text-center" 
-                      style={{ padding: '6px', fontSize: '13px', width: '60px' }}
+                      className="text-input text-center font-bold" 
+                      style={{ padding: '8px 4px', fontSize: '14px', width: '80px' }}
                       placeholder="%"
                     />
                   </td>
-                  <td className="p-2 border-r border-slate-700/50 bg-orange-500/5">
+                  <td className="p-3 border-r border-slate-700/50 bg-orange-500/5">
                     <select 
                       value={c.paramedical_mode || 'group'} 
                       onChange={(e) => updateCase(c.id!, 'paramedical_mode', e.target.value)}
                       className="select-field"
-                      style={{ padding: '6px', fontSize: '12px' }}
+                      style={{ padding: '8px', fontSize: '14px', width: '100px' }}
                     >
                       <option value="group">Group</option>
                       <option value="individual">Indiv</option>
@@ -379,10 +374,10 @@ export default function OTEntryPage() {
                   </td>
 
                   {/* Actions */}
-                  <td className="p-2 text-center">
+                  <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => duplicateRow(c)} className="p-1.5 text-slate-400 hover:text-blue-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Duplicate"><Copy size={14}/></button>
-                      <button onClick={() => deleteRow(c.id!)} className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Delete"><Trash2 size={14}/></button>
+                      <button onClick={() => duplicateRow(c)} className="p-2 text-slate-400 hover:text-blue-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Duplicate"><Copy size={16}/></button>
+                      <button onClick={() => deleteRow(c.id!)} className="p-2 text-slate-400 hover:text-red-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Delete"><Trash2 size={16}/></button>
                     </div>
                   </td>
                 </tr>
@@ -423,9 +418,10 @@ export default function OTEntryPage() {
   );
 }
 
-// Mini Multi-Select Component to mimic simple multiselect behavior
+// Mini Multi-Select Component to mimic simple multiselect behavior with search
 function MultiSelect({ options, selected, onChange, placeholder }: { options: {value: string, label: string}[], selected: string[], onChange: (v: string[]) => void, placeholder: string }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -446,31 +442,106 @@ function MultiSelect({ options, selected, onChange, placeholder }: { options: {v
     }
   };
 
+  const filtered = options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()));
+
   return (
     <div className="relative" ref={ref}>
       <button 
         type="button"
-        className="w-full text-left truncate px-3 py-1.5 rounded-lg border border-slate-700 bg-[rgba(15,23,42,0.4)] text-[13px] text-slate-300 hover:border-slate-500 transition-colors"
+        className="w-full text-left truncate px-4 py-2.5 rounded-lg border border-slate-600 bg-[rgba(15,23,42,0.6)] text-[14px] text-slate-200 hover:border-slate-500 transition-colors shadow-sm"
         onClick={() => setOpen(!open)}
         title={selected.length ? `${selected.length} Selected` : placeholder}
       >
-        {selected.length ? `${selected.length} Selected` : <span className="text-slate-500">{placeholder}</span>}
+        {selected.length ? `${selected.length} Selected` : <span className="text-slate-400">{placeholder}</span>}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 p-2">
-          {options.length === 0 ? (
-            <div className="text-xs text-slate-500 p-2">No valid staff found</div>
-          ) : options.map(o => (
-            <label key={o.value} className="flex items-center gap-2 p-1.5 hover:bg-slate-700 rounded cursor-pointer text-[13px] text-slate-300">
+        <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-2xl z-50 p-2 block">
+          <input 
+            type="text" 
+            placeholder="Search staff..." 
+            className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2 rounded mb-2 text-sm focus:outline-none focus:border-blue-500"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            autoFocus
+          />
+          {filtered.length === 0 ? (
+            <div className="text-sm text-slate-500 p-2 text-center">No matching staff</div>
+          ) : filtered.map(o => (
+            <label key={o.value} className="flex items-center gap-3 p-2 hover:bg-slate-700 rounded cursor-pointer text-[14px] text-slate-200 transition-colors">
               <input 
                 type="checkbox" 
                 checked={selected.includes(o.value)} 
                 onChange={() => toggle(o.value)}
-                className="rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-500/50"
+                className="rounded border-slate-500 bg-slate-900 text-blue-500 w-4 h-4 focus:ring-blue-500/50"
               />
               <span className="truncate">{o.label}</span>
             </label>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Searchable Single Select
+function SingleSelect({ options, value, onChange, placeholder }: { options: {value: string, label: string}[], value: string | null, onChange: (v: string) => void, placeholder: string }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const selectedLabel = options.find(o => o.value === value)?.label;
+  const filtered = options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="relative" ref={ref}>
+      <button 
+        type="button"
+        className="w-full text-left truncate px-4 py-2.5 rounded-lg border border-slate-600 bg-[rgba(15,23,42,0.6)] text-[14px] text-slate-200 hover:border-slate-500 transition-colors shadow-sm"
+        onClick={() => setOpen(!open)}
+      >
+        {selectedLabel ? <span className="text-slate-200">{selectedLabel}</span> : <span className="text-slate-400">{placeholder}</span>}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-2xl z-50 p-2 block">
+          <input 
+            type="text" 
+            placeholder="Search staff..." 
+            className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2 rounded mb-2 text-sm focus:outline-none focus:border-blue-500"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            autoFocus
+          />
+          {filtered.length === 0 ? (
+            <div className="text-sm text-slate-500 p-2 text-center">No matching staff</div>
+          ) : (
+            <>
+              <div 
+                className="p-2 hover:bg-slate-700 rounded cursor-pointer text-[14px] text-slate-400 italic mb-1"
+                onClick={() => { onChange(''); setOpen(false); setQuery(''); }}
+              >
+                -- Clear Selection --
+              </div>
+              {filtered.map(o => (
+                <div 
+                  key={o.value} 
+                  className={`p-2 hover:bg-slate-700 rounded cursor-pointer text-[14px] transition-colors ${o.value === value ? 'bg-blue-500/20 text-blue-400' : 'text-slate-200'}`}
+                  onClick={() => { onChange(o.value); setOpen(false); setQuery(''); }}
+                >
+                  {o.label}
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

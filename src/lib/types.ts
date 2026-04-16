@@ -104,6 +104,17 @@ export interface StaffWorkEntry {
   staff?: Staff;
 }
 
+export interface OTMonthlyAddon {
+  id: string;
+  month: string;
+  addon_department_id: string;
+  percentage: number;
+  calculation_type: 'individual' | 'group';
+  attendance_rule: 'daily' | 'monthly' | 'none';
+  applied_rules?: string[];
+  created_at: string;
+}
+
 export interface OTCase {
   id: string;
   month: string;

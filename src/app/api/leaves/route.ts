@@ -55,6 +55,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'staff_id and date required' }, { status: 400 });
   }
 
+  // ── Lock Check: Prevent changes when attendance is locked ──
+  const monthFromDate = date.substring(0, 7); // YYYY-MM
+  const { data: statusRow } = await supabase
+    .from('monthly_attendance_status')
+    .select('is_locked')
+    .eq('month', monthFromDate)
+    .maybeSingle();
+
+  if (statusRow?.is_locked) {
+    return NextResponse.json(
+      { error: 'Attendance is locked for this month. Unlock it first to make changes.' },
+      { status: 403 }
+    );
+  }
+
   if (!leave_type) {
     // Remove leave = mark as present
     const { error } = await supabase
@@ -92,6 +107,29 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id');
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  // ── Lock Check: Look up the leave to find its date, then check lock ──
+  const { data: leaveRow } = await supabase
+    .from('staff_leaves')
+    .select('date')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (leaveRow?.date) {
+    const monthFromDate = leaveRow.date.substring(0, 7);
+    const { data: statusRow } = await supabase
+      .from('monthly_attendance_status')
+      .select('is_locked')
+      .eq('month', monthFromDate)
+      .maybeSingle();
+
+    if (statusRow?.is_locked) {
+      return NextResponse.json(
+        { error: 'Attendance is locked for this month. Unlock it first to make changes.' },
+        { status: 403 }
+      );
+    }
+  }
 
   const { error } = await supabase.from('staff_leaves').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

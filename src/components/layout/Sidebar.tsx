@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Activity,
+  Stethoscope,
 } from 'lucide-react';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/attendance', label: 'Attendance', icon: CalendarOff },
   { href: '/rules', label: 'Rules', icon: Settings2 },
   { href: '/monthly-entry', label: 'Monthly Entry', icon: CalendarPlus },
+  { href: '/ot-entry', label: 'OT Entry', icon: Stethoscope },
   { href: '/reports', label: 'Reports', icon: FileBarChart },
 ];
 

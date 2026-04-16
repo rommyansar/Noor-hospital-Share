@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const supabase = await createClient();
   const body = await req.json();
-  const { department_id, month, total_amount, applied_rules, is_locked } = body;
+  const { department_id, month, total_amount, applied_rules, is_locked, auto_staff_ids, manual_staff_ids } = body;
 
   if (!department_id || !month) {
     return NextResponse.json({ error: 'department_id and month required' }, { status: 400 });
@@ -40,6 +40,12 @@ export async function POST(req: Request) {
   };
   if (typeof is_locked === 'boolean') {
     upsertPayload.is_locked = is_locked;
+  }
+  if (Array.isArray(auto_staff_ids)) {
+    upsertPayload.auto_staff_ids = auto_staff_ids;
+  }
+  if (Array.isArray(manual_staff_ids)) {
+    upsertPayload.manual_staff_ids = manual_staff_ids;
   }
 
   const { data, error } = await supabase

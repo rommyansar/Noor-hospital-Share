@@ -11,6 +11,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
+  // ── Lock Check: Prevent changes when attendance is locked ──
+  const { data: statusRow } = await supabase
+    .from('monthly_attendance_status')
+    .select('is_locked')
+    .eq('month', month)
+    .maybeSingle();
+
+  if (statusRow?.is_locked) {
+    return NextResponse.json(
+      { error: 'Attendance is locked for this month. Unlock it first to make changes.' },
+      { status: 403 }
+    );
+  }
+
   for (const row of data) {
     const { staff_id, off_dates } = row;
 

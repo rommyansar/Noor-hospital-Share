@@ -8,7 +8,7 @@ export interface Department {
   id: string;
   name: string;
   is_active: boolean;
-  calculation_method: 'income' | 'staff_based';
+  calculation_method: 'income' | 'staff_based' | 'auto_manual';
   attendance_rule: 'daily' | 'monthly' | 'none';
   created_at: string;
   updated_at: string;
@@ -103,6 +103,32 @@ export interface StaffWorkEntry {
   created_at: string;
   staff?: Staff;
 }
+
+export interface OTCase {
+  id: string;
+  month: string;
+  date: string;
+  case_type: 'Major' | 'Minor';
+  amount: number;
+  
+  doctor_id: string | null;
+  doctor_pct: number;
+  
+  assist_doctor_ids: string[];
+  assist_doctor_pct: number;
+  assist_doctor_mode: 'individual' | 'group';
+  
+  assist_nurse_ids: string[];
+  assist_nurse_pct: number;
+  assist_nurse_mode: 'individual' | 'group';
+  
+  paramedical_ids: string[];
+  paramedical_pct: number;
+  paramedical_mode: 'individual' | 'group';
+  
+  created_at: string;
+}
+
 
 export interface DailyResult {
   id: string;

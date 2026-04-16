@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ShieldCheck, ShieldAlert, Save, Filter, Calendar, X } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Save, Filter, Calendar, X, Lock, Unlock } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department, Staff, StaffLeave } from '@/lib/types';
 
@@ -24,6 +24,7 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isReviewed, setIsReviewed] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
   const [addonDeptIds, setAddonDeptIds] = useState<Set<string>>(new Set());
 
   // Pending changes stores exactly what the user typed in the text box e.g. "2, 14"
@@ -64,6 +65,7 @@ export default function AttendancePage() {
     setStaffList(staffData.filter((s: Staff) => s.is_active));
     setLeaves(lvData);
     setIsReviewed(statusData.is_reviewed || false);
+    setIsLocked(statusData.is_locked || false);
 
     setPendingChanges(new Map());
     setLoading(false);
@@ -108,6 +110,21 @@ export default function AttendancePage() {
       addToast('success', `Attendance marked as ${nextVal ? 'Reviewed' : 'Unreviewed'}`);
     } else {
       addToast('error', 'Failed to update review status');
+    }
+  };
+
+  const toggleLocked = async () => {
+    const nextVal = !isLocked;
+    const res = await fetch('/api/monthly-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month: selectedMonth, is_locked: nextVal }),
+    });
+    if (res.ok) {
+      setIsLocked(nextVal);
+      addToast('success', nextVal ? '🔒 Attendance locked — no changes allowed.' : '🔓 Attendance unlocked — editing enabled.');
+    } else {
+      addToast('error', 'Failed to update lock status');
     }
   };
 
@@ -200,6 +217,10 @@ export default function AttendancePage() {
 
   const handleSaveAll = async () => {
     if (pendingChanges.size === 0) return;
+    if (isLocked) {
+      addToast('error', 'Attendance is locked. Unlock it first to save changes.');
+      return;
+    }
     setSaving(true);
     
     const payload = Array.from(pendingChanges.entries()).map(([staffId, rawString]) => ({
@@ -217,6 +238,9 @@ export default function AttendancePage() {
       if (res.ok) {
         addToast('success', `Saved attendance for ${selectedMonth}`);
         await loadData();
+      } else if (res.status === 403) {
+        addToast('error', 'Attendance is locked for this month.');
+        setIsLocked(true);
       } else {
         addToast('error', 'Failed to save attendance');
       }
@@ -249,10 +273,21 @@ export default function AttendancePage() {
               Global Attendance
             </span>
             <button
+              onClick={toggleLocked}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-all ${
+                isLocked
+                  ? 'bg-amber-500/15 text-amber-400 border-2 border-amber-500/30'
+                  : 'bg-slate-800/50 text-slate-400 border border-slate-700/30 hover:border-amber-500/30 hover:text-amber-400'
+              }`}
+            >
+              {isLocked ? <Lock size={14} /> : <Unlock size={14} />}
+              {isLocked ? 'Locked' : 'Unlocked'}
+            </button>
+            <button
               onClick={handleSaveAll}
-              disabled={!hasChanges || saving}
+              disabled={!hasChanges || saving || isLocked}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg ${
-                hasChanges ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                hasChanges && !isLocked ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
               {saving ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <Save size={18} />}
@@ -303,6 +338,18 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      {isLocked && (
+        <div className="glass-card mb-6" style={{ padding: '16px 20px', background: 'rgba(245, 158, 11, 0.08)', border: '2px solid rgba(245, 158, 11, 0.25)' }}>
+          <div className="flex items-center gap-3">
+            <Lock size={20} className="text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-amber-400 mb-0.5">🔒 Attendance Locked</p>
+              <p className="text-xs text-amber-300/70">This month's attendance is locked. All fields are read-only. Click the "Locked" button above to unlock and enable editing.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="glass-card empty-state">
           <div className="spinner" style={{ margin: '0 auto 16px' }} />
@@ -352,15 +399,18 @@ export default function AttendancePage() {
                           <input 
                             type="text"
                             className={`flex-1 bg-slate-900 border text-white rounded-lg px-4 py-2.5 focus:outline-none transition-colors ${
-                              dirty 
-                                ? 'border-amber-500' 
-                                : 'border-slate-700 focus:border-emerald-500'
+                              isLocked
+                                ? 'border-slate-700/50 opacity-60 cursor-not-allowed'
+                                : dirty 
+                                  ? 'border-amber-500' 
+                                  : 'border-slate-700 focus:border-emerald-500'
                             }`}
                             value={currentStr}
                             placeholder="e.g. 2, 5, 14, 25"
                             onChange={(e) => handleLocalChange(staff.id, e.target.value)}
+                            disabled={isLocked}
                           />
-                          {currentStr && (
+                          {currentStr && !isLocked && (
                             <button
                               onClick={() => handleLocalChange(staff.id, '')}
                               className="p-2 text-slate-500 hover:text-red-400 transition-colors"

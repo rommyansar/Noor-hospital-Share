@@ -160,9 +160,9 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
 
       const parts = s.work_entries.map(w => {
         const pct = parseFloat(w.percentage || '0') || 0;
-        return `${w.description}: ₹${w.work_amount.toLocaleString('en-IN')} × ${pct}% = ₹${w.calculated_share.toLocaleString('en-IN')}`;
+        return `${w.description}: Rs. ${w.work_amount.toLocaleString('en-IN')} × ${pct}% = Rs. ${w.calculated_share.toLocaleString('en-IN')}`;
       });
-      calculationBreakdown = parts.join(' | ');
+      calculationBreakdown = parts.join('\n');
 
     } else if (s.rule_entries.length > 0) {
       // Rule-based staff
@@ -186,15 +186,15 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
         const count = firstEntry.present_count || 1;
         // Simplify calculation breakdown text to reflect real attendance-adjusted math
-        calculationBreakdown = `₹${workingAmount.toLocaleString('en-IN')} × ${pct}% = ₹${poolAmt.toLocaleString('en-IN')} ÷ ${count} staff = ₹${s.total_share.toLocaleString('en-IN')}`;
+        calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n÷ ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
       } else {
         // Simplify calculation breakdown text to reflect real attendance-adjusted math
-        calculationBreakdown = `₹${workingAmount.toLocaleString('en-IN')} × ${pct}% = ₹${s.total_share.toLocaleString('en-IN')}`;
+        calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
       }
 
       // If addon, prepend addon context
       if (isAddon && note) {
-        calculationBreakdown = `[${note}] → ${calculationBreakdown}`;
+        calculationBreakdown = `[${note}]\n→ ${calculationBreakdown}`;
       }
     }
 
@@ -426,7 +426,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const rows = buildNormalRows(data);
     autoTable(doc, {
       startY: yPos,
-      head: [['Sr.', 'Staff Name', 'Role', 'Work Amount (₹)', 'Percentage', 'Share Amount (₹)']],
+      head: [['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)']],
       body: rows.map(r => [
         r.srNo,
         r.staffName,
@@ -482,12 +482,12 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       'Total\nDays',
       'Off/CL\nTaken',
       'Working\nDays',
-      'Working Amount\n(₹)',
+      'Working Amount\n(Rs.)',
       '%',
       'Distribution\nType',
       'Group\nCount',
       'Calculation Breakdown',
-      'Final Share\n(₹)',
+      'Final Share\n(Rs.)',
     ];
 
     const mapRow = (r: DetailedComprehensiveRow) => [
@@ -497,28 +497,28 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       r.totalDays,
       r.offCLDays,
       r.workingDays,
-      `₹${formatCurrencyShort(r.workingAmount)}`,
+      `Rs. ${formatCurrencyShort(r.workingAmount)}`,
       r.percentage,
       r.distributionType,
       r.groupCount,
       r.calculationBreakdown,
-      `₹${formatCurrencyShort(r.finalShare)}`,
+      `Rs. ${formatCurrencyShort(r.finalShare)}`,
     ];
 
     // Available width in landscape legal: ~356 - 24 (margins) = 332mm
     const colStyles: Record<number, any> = {
-      0:  { halign: 'center', cellWidth: 10 },   // Sr.
-      1:  { halign: 'left',   cellWidth: 30 },    // Staff Name
-      2:  { halign: 'center', cellWidth: 20 },    // Role
-      3:  { halign: 'center', cellWidth: 14 },    // Total Days
-      4:  { halign: 'center', cellWidth: 14 },    // Off/CL
-      5:  { halign: 'center', cellWidth: 16 },    // Working Days
-      6:  { halign: 'right',  cellWidth: 28 },    // Working Amount
-      7:  { halign: 'center', cellWidth: 12 },    // %
-      8:  { halign: 'center', cellWidth: 20 },    // Distribution
-      9:  { halign: 'center', cellWidth: 14 },    // Group Count
-      10: { halign: 'left',   cellWidth: 'auto' }, // Calculation — fills remaining
-      11: { halign: 'right',  cellWidth: 26 },    // Final Share
+      0:  { halign: 'center', cellWidth: 10 },    // Sr.
+      1:  { halign: 'left' },                     // Staff Name
+      2:  { halign: 'center' },                   // Role
+      3:  { halign: 'center' },                   // Total Days
+      4:  { halign: 'center' },                   // Off/CL
+      5:  { halign: 'center' },                   // Working Days
+      6:  { halign: 'right' },                    // Working Amount
+      7:  { halign: 'center' },                   // %
+      8:  { halign: 'center' },                   // Distribution
+      9:  { halign: 'center' },                   // Group Count
+      10: { halign: 'left' },                     // Calculation
+      11: { halign: 'right' },                    // Final Share
     };
 
     // Helper to render a section with a section header
@@ -554,9 +554,12 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         foot: [[
           { content: '', colSpan: 6 },
           { content: 'Section Total:', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
-          { content: `₹${formatCurrencyShort(sectionRows.reduce((s, r) => s + r.finalShare, 0))}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
+          { content: `Rs. ${formatCurrencyShort(sectionRows.reduce((s, r) => s + r.finalShare, 0))}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
         ]],
         theme: 'grid',
+        styles: {
+          overflow: 'linebreak',
+        },
         headStyles: {
           fillColor: [30, 41, 59], // slate-800
           textColor: [255, 255, 255],
@@ -568,8 +571,8 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
           lineColor: [71, 85, 105],
         },
         bodyStyles: {
-          fontSize: 7.5,
-          cellPadding: { top: 2, bottom: 2, left: 2, right: 2 },
+          fontSize: 7,
+          cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
           lineWidth: 0.1,
           lineColor: [203, 213, 225],
           textColor: [15, 23, 42],
@@ -637,7 +640,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         { content: 'GRAND TOTAL:', colSpan: 5, styles: { 
           halign: 'right', fontStyle: 'bold', fontSize: 10, textColor: [15, 23, 42],
         }},
-        { content: `₹${formatCurrencyShort(data.total_distributed)}`, styles: { 
+        { content: `Rs. ${formatCurrencyShort(data.total_distributed)}`, styles: { 
           halign: 'right', fontStyle: 'bold', fontSize: 10, textColor: [16, 185, 129],
           fillColor: [240, 253, 244],
         }},

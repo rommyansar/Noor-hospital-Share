@@ -21,7 +21,14 @@ export async function GET(req: Request) {
     return NextResponse.json(data);
   } else {
     // get all for month
-    query = query.like('date', `${month}-%`).order('date', { ascending: true });
+    // get all for month safely without timezone shifting
+    const [yearStr, monthStr] = month!.split('-');
+    const y = parseInt(yearStr, 10);
+    const m = parseInt(monthStr, 10);
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? y + 1 : y;
+    const nextMonth = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+    query = query.gte('date', `${month}-01`).lt('date', nextMonth).order('date', { ascending: true });
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data || []);

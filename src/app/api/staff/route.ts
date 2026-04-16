@@ -10,14 +10,19 @@ export async function GET(req: Request) {
 
   // We should just return all staff and sort them by name, since the requirement is to not group by department anymore
   let query = supabase.from('staff').select('*, departments(*)').order('name');
-  if (deptId) {
-    // Check if department_ids contains the passed deptId
-    query = query.contains('department_ids', [deptId]);
-  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  
+  let result = data;
+  if (deptId && result) {
+    result = result.filter((s: any) => {
+      const ids = s.department_ids || [s.department_id];
+      return ids.includes(deptId);
+    });
+  }
+  
+  return NextResponse.json(result);
 }
 
 export async function POST(req: Request) {

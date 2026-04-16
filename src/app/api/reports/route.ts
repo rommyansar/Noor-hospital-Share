@@ -27,10 +27,21 @@ export async function GET(req: Request) {
   const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
   const endDate = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 
+  // Fetch department name, monthly total, income data, and work entries ALL in parallel
+  // (was 4 sequential round-trips → now 1 concurrent batch)
+  const [deptRes, deptTotalRes, incomeRes, workEntriesRes] = await Promise.all([
+    supabase.from('departments').select('name').eq('id', deptId).single(),
+    supabase.from('department_monthly_totals').select('total_amount').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
+    supabase.from('daily_income').select('amount').eq('department_id', deptId).gte('date', startDate).lt('date', endDate),
+    supabase.from('staff_work_entries').select('*').eq('department_id', deptId).gte('date', startDate).lt('date', endDate).order('date'),
+  ]);
+
+  const mainDeptName = deptRes.data?.name || 'Unknown';
+
   // Get all daily results for this dept in this month
   const { data: results, error } = await supabase
     .from('daily_results')
-    .select('*, staff(*, departments!inner(name))')
+    .select('*, staff(*, departments(name))')
     .eq('department_id', deptId)
     .gte('date', startDate)
     .lt('date', endDate)
@@ -38,22 +49,24 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const filteredResults = results || [];
+
   // Aggregate by staff
   const staffTotals: Record<string, any> = {};
 
   // Build set of dates present for each staff to avoid double counting for daily rules
   const presentDates: Record<string, Set<string>> = {};
 
-  for (const r of (results || [])) {
+  for (const r of filteredResults) {
     const breakdownObj = r.breakdown as Record<string, any> | null;
     const isAddon = breakdownObj?.type === 'addon_share' || !!breakdownObj?.addon_department;
     
     if (!staffTotals[r.staff_id]) {
-      // Get the correct origin department
-      let originDept = ((r.staff as any)?.departments?.name || 'Unknown');
-      if (isAddon && breakdownObj?.addon_department) {
-        originDept = breakdownObj.addon_department;
-      }
+      // If it's an addon, use the origin department name from the breakdown note.
+      // Otherwise, it must be from the main department being reported on.
+      const originDept = (isAddon && breakdownObj?.addon_department) 
+        ? breakdownObj.addon_department 
+        : mainDeptName;
 
       staffTotals[r.staff_id] = {
         staff_id: r.staff_id,
@@ -114,17 +127,6 @@ export async function GET(req: Request) {
       });
     }
   }
-
-  // Fetch department name, monthly total, income data, and work entries ALL in parallel
-  // (was 4 sequential round-trips → now 1 concurrent batch)
-  const [deptRes, deptTotalRes, incomeRes, workEntriesRes] = await Promise.all([
-    supabase.from('departments').select('name').eq('id', deptId).single(),
-    supabase.from('department_monthly_totals').select('total_amount').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
-    supabase.from('daily_income').select('amount').eq('department_id', deptId).gte('date', startDate).lt('date', endDate),
-    supabase.from('staff_work_entries').select('*').eq('department_id', deptId).gte('date', startDate).lt('date', endDate).order('date'),
-  ]);
-
-  const mainDeptName = deptRes.data?.name || 'Unknown';
 
   // Apply sorting rules
   const aggregated = Object.values(staffTotals).sort((a: any, b: any) => {

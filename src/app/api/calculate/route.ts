@@ -178,7 +178,7 @@ async function processAddons(
           staff_id: staff.id,
           department_id: mainDeptId,
           date: `${month}-01`,
-          income_amount: mainIncome,
+          income_amount: Math.round(mainIncome * (daysInMonth > 0 ? (presentDays / daysInMonth) : 1) * 100) / 100,
           calculation_type: 'rule',
           rule_percentage: pctStrDisplay,
           distribution_type: distType,
@@ -358,11 +358,6 @@ export async function POST(req: Request) {
     newResults.push(...addonResults);
     totalDistributed += addonResults.reduce((s: number, r: any) => s + r.final_share, 0);
 
-    // ── DETERMINE CALCULATION MODE ──
-    const useMonthlyRuleLogic = deptTotalAmount > 0 ||
-      dept.attendance_rule === 'monthly' ||
-      dept.attendance_rule === 'none';
-
     if (dept.calculation_method === 'staff_based') {
       // ── STAFF BASED: percentage applied to each staff's manually entered amount ──
       const { data: amounts } = await supabase
@@ -407,119 +402,34 @@ export async function POST(req: Request) {
           const presentDays = totalWorkingDays - absentDays;
           const prorateRatio = applyProration ? (presentDays / totalWorkingDays) : 1;
 
-          // Apply percentage based on distribution type
-          let share = 0;
+          // 1. Working Amount is exactly what was entered in the Input Box
+          // (Frontend auto-fills this via TDA * attendance, or user types it)
+          const adjustedBase = stored.amount;
+          // 2. Apply Percentage on Working Amount
           let poolAmount = 0;
           let presentCount = 1;
+          let share = 0;
+
           if (distType === 'group') {
             presentCount = staffCountByRole[userRole] || 1;
-            share = computeGroupShare(stored.amount, pctStr, presentCount);
-            poolAmount = computePoolAmount(stored.amount, pctStr);
+            poolAmount = computePoolAmount(adjustedBase, pctStr);
+            share = Math.round((poolAmount / presentCount) * 100) / 100;
           } else {
-            share = computeIndividualShare(stored.amount, pctStr);
-          }
-
-          // Apply attendance proration if applicable
-          if (applyProration) {
-            share = Math.round(share * prorateRatio * 100) / 100;
+            share = Math.round(adjustedBase * (parsePercentage(pctStr) / 100) * 100) / 100;
           }
 
           newResults.push({
             staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
-            income_amount: stored.amount, calculation_type: 'rule',
-            rule_percentage: pctStr, distribution_type: distType,
-            pool_amount: poolAmount, present_count: presentCount, final_share: share,
-            breakdown: {
-              note: applyProration
-                ? `Staff work amount × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} staff` : ''} (Prorated ${presentDays}/${totalWorkingDays})`
-                : `Staff work amount × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} staff` : ''}`,
-              role: staff.role,
-              percentage: `${parsePercentage(pctStr)}%`,
-              gross_income: stored.amount,
-              dist_type: distType,
-              attendance_rule: dept.attendance_rule,
-              total_days: daysInMonth,
-              present_days: presentDays,
-              absent_days: absentDays,
-              prorate_ratio: applyProration ? `${presentDays}/${totalWorkingDays}` : undefined,
-            },
-          });
-          totalDistributed += share;
-        }
-      }
-    } else if (useMonthlyRuleLogic) {
-      // ── OVERALL MONTHLY INCOME (WITH OR WITHOUT ATTENDANCE PRORATION) ──
-      if (totalMonthlyIncome <= 0) continue;
-
-      const totalWorkingDays = daysInMonth;
-      const daysAbsentByStaff: Record<string, number> = {};
-
-      for (const staff of staffData) {
-        let absentDays = 0;
-        for (let day = 1; day <= daysInMonth; day++) {
-          const dateStr = `${month}-${String(day).padStart(2, '0')}`;
-          if (globalLeavesByDate[dateStr]?.has(staff.id)) absentDays++;
-        }
-        daysAbsentByStaff[staff.id] = absentDays;
-      }
-
-      const applyProration = dept.attendance_rule === 'monthly';
-      const presentCountByRole: Record<string, number> = {};
-      for (const s of staffData) {
-        const rk = s.role.toUpperCase().trim();
-        presentCountByRole[rk] = (presentCountByRole[rk] || 0) + 1;
-      }
-
-      for (const staff of staffData) {
-        const userRole = staff.role.toUpperCase().trim();
-        const rule = ruleMap[userRole];
-        if (!rule) continue;
-
-        const override = overrideMap[staff.id];
-        // Always use rule's distribution_type — override rows default to 'individual' in DB
-        const distType = rule.distribution_type;
-        const pctStr = override?.percentage !== null && override?.percentage !== undefined
-          ? override.percentage.toString()
-          : getStaffPercentage(staff, dept.id, rule.percentage);
-
-        const absentDays = daysAbsentByStaff[staff.id] || 0;
-        const presentDays = totalWorkingDays - absentDays;
-        const prorateRatio = applyProration ? (presentDays / totalWorkingDays) : 1;
-        let baseShare = 0;
-        let poolAmount = 0;
-        let presentCount = 1;
-
-        if (distType === 'group') {
-          presentCount = presentCountByRole[userRole] || 1;
-          baseShare = computeGroupShare(totalMonthlyIncome, pctStr, presentCount);
-          poolAmount = computePoolAmount(totalMonthlyIncome, pctStr);
-        } else {
-          baseShare = computeIndividualShare(totalMonthlyIncome, pctStr);
-        }
-
-        let share = 0;
-        let adjustedBase = totalMonthlyIncome;
-        if (applyProration) {
-          adjustedBase = Math.round(totalMonthlyIncome * prorateRatio * 100) / 100;
-          share = Math.round(adjustedBase * (parsePercentage(pctStr) / 100) * (distType === 'group' ? 1 / presentCount : 1) * 100) / 100;
-        } else {
-          share = Math.round(baseShare * 100) / 100;
-        }
-
-        if (share > 0) {
-          newResults.push({
-            staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
-            income_amount: totalMonthlyIncome, calculation_type: 'rule',
+            income_amount: adjustedBase, calculation_type: 'rule',
             rule_percentage: pctStr, distribution_type: distType,
             pool_amount: poolAmount, present_count: presentCount, final_share: share,
             breakdown: {
               adjusted_base: adjustedBase,
-              note: deptTotalAmount > 0
-                ? 'Remark-Total Department Amount'
-                : (applyProration ? 'Prorated monthly' : 'Direct income (no attendance)'),
+              note: `Staff work amount × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} staff` : ''}`,
               role: staff.role,
               percentage: `${parsePercentage(pctStr)}%`,
-              distribution: distType,
+              gross_income: stored.amount,
+              dist_type: distType,
               attendance_rule: dept.attendance_rule,
               total_days: daysInMonth,
               present_days: presentDays,
@@ -539,7 +449,7 @@ export async function POST(req: Request) {
           ? deptTotalAmount / daysInMonth
           : (dayData?.amount || 0);
 
-        const onLeaveSet = globalLeavesByDate[dateStr] || new Set();
+        const onLeaveSet = dept.attendance_rule === 'none' ? new Set() : (globalLeavesByDate[dateStr] || new Set());
 
         let presentStaff = [];
         if (dayData && dayData.present_staff_ids && Array.isArray(dayData.present_staff_ids)) {

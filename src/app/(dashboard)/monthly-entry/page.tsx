@@ -27,6 +27,8 @@ export default function MonthlyEntryPage() {
   const [incomes, setIncomes] = useState<Record<string, IncomeState>>({});
   const [leavesByDate, setLeavesByDate] = useState<Record<string, Set<string>>>({});
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [autoStaffList, setAutoStaffList] = useState<Staff[]>([]);
+  const [manualStaffList, setManualStaffList] = useState<Staff[]>([]);
   const [globalStaffList, setGlobalStaffList] = useState<Staff[]>([]);
   const [staffAmounts, setStaffAmounts] = useState<Record<string, string>>({});
   const [deptTotalAmount, setDeptTotalAmount] = useState<string>('');
@@ -77,12 +79,17 @@ export default function MonthlyEntryPage() {
         fetch(`/api/leaves?month=${monthStr}`),
       ]);
 
+      let initialAutoStaffIds: string[] = [];
+      let initialManualStaffIds: string[] = [];
+
       // Process Dept Total Amount
       if (dtRes.ok) {
         const dtData = await dtRes.json();
         setDeptTotalAmount(dtData?.total_amount ? dtData.total_amount.toString() : '');
         setAppliedMainRules(dtData?.applied_rules || []);
         setIsLocked(!!dtData?.is_locked);
+        initialAutoStaffIds = dtData?.auto_staff_ids || [];
+        initialManualStaffIds = dtData?.manual_staff_ids || [];
       } else {
         setDeptTotalAmount('');
         setAppliedMainRules([]);
@@ -163,6 +170,11 @@ export default function MonthlyEntryPage() {
       });
       setStaffList(filteredStaff);
 
+      const autoStaff = allActiveStaff.filter(s => initialAutoStaffIds.includes(s.id));
+      const manualStaff = allActiveStaff.filter(s => initialManualStaffIds.includes(s.id));
+      setAutoStaffList(autoStaff);
+      setManualStaffList(manualStaff);
+
       // Process Incomes
       const inData = await inRes.json();
       const newIncomes: Record<string, IncomeState> = {};
@@ -217,10 +229,12 @@ export default function MonthlyEntryPage() {
     setSaving(true);
 
     const isStaffBased = departments.find(d => d.id === selectedDept)?.calculation_method === 'staff_based';
+    const isAutoManual = departments.find(d => d.id === selectedDept)?.calculation_method === 'auto_manual';
 
     try {
-      if (isStaffBased) {
-        const entriesToSave = staffList.map(staff => {
+      if (isStaffBased || isAutoManual) {
+        const targetList = isAutoManual ? manualStaffList : staffList;
+        const entriesToSave = targetList.map(staff => {
           const amt = parseFloat(staffAmounts[staff.id]) || 0;
           return {
             staff_id: staff.id,
@@ -243,7 +257,9 @@ export default function MonthlyEntryPage() {
         if (!res.ok) {
           throw new Error('Failed to save staff amounts');
         }
-      } else {
+      }
+      
+      if (!isStaffBased || isAutoManual) {
         // Save daily income records
         const recordsToSave = [];
         for (let day = 1; day <= totalDays; day++) {
@@ -293,7 +309,9 @@ export default function MonthlyEntryPage() {
           month: monthStr,
           total_amount: parseFloat(deptTotalAmount) || 0,
           applied_rules: appliedMainRules,
-          is_locked: isLocked
+          is_locked: isLocked,
+          auto_staff_ids: isAutoManual ? autoStaffList.map(s => s.id) : [],
+          manual_staff_ids: isAutoManual ? manualStaffList.map(s => s.id) : []
         })
       });
 
@@ -335,7 +353,7 @@ export default function MonthlyEntryPage() {
     }
   };
 
-  const changeIncomeType = async (method: 'income' | 'staff_based') => {
+  const changeIncomeType = async (method: 'income' | 'staff_based' | 'auto_manual') => {
     if (!selectedDept) return;
     try {
       const res = await fetch(`/api/departments/${selectedDept}`, {
@@ -358,6 +376,7 @@ export default function MonthlyEntryPage() {
   const deptName = selectedDepartmentData?.name || '';
   const attendanceRule = selectedDepartmentData?.attendance_rule || 'daily';
   const isStaffBased = selectedDepartmentData?.calculation_method === 'staff_based';
+  const isAutoManual = selectedDepartmentData?.calculation_method === 'auto_manual';
   const isMonthlyBased = attendanceRule === 'monthly';
 
 
@@ -372,7 +391,8 @@ export default function MonthlyEntryPage() {
     } else {
       // Default: All staff minus those on leave
       const leaves = leavesByDate[dateStr] || new Set();
-      const defaultPresent = staffList.filter(s => !leaves.has(s.id)).map(s => s.id);
+      const targetList = isAutoManual ? autoStaffList : staffList;
+      const defaultPresent = targetList.filter(s => !leaves.has(s.id)).map(s => s.id);
       setTempSelection(new Set(defaultPresent));
     }
 
@@ -388,8 +408,9 @@ export default function MonthlyEntryPage() {
 
   const toggleAll = (select: boolean) => {
     if (!editingDate) return;
+    const targetList = isAutoManual ? autoStaffList : staffList;
     if (select) {
-      setTempSelection(new Set(staffList.map(s => s.id)));
+      setTempSelection(new Set(targetList.map(s => s.id)));
     } else {
       setTempSelection(new Set());
     }
@@ -398,7 +419,8 @@ export default function MonthlyEntryPage() {
   const toggleRole = (role: string, select: boolean) => {
     if (!editingDate) return;
     const next = new Set(tempSelection);
-    staffList.filter(s => s.role === role).forEach(s => {
+    const targetList = isAutoManual ? autoStaffList : staffList;
+    targetList.filter(s => s.role === role).forEach(s => {
       if (select) next.add(s.id);
       else next.delete(s.id);
     });
@@ -409,7 +431,9 @@ export default function MonthlyEntryPage() {
     if (!editingDate) return;
     setModalSaving(true);
 
-    // 1. Save presence locally (no network call yet — will save with "Save Month")
+    // Save presence locally only (department-scoped via present_staff_ids).
+    // This does NOT touch global attendance (staff_leaves).
+    // Data will persist to daily_income when user clicks "Save Month".
     setIncomes(prev => ({
       ...prev,
       [editingDate]: {
@@ -417,33 +441,6 @@ export default function MonthlyEntryPage() {
         present_staff_ids: Array.from(tempSelection)
       }
     }));
-
-    // Sync Attendance (Leave) based on selection
-    const leavesPayload = staffList.map(staff => ({
-      staff_id: staff.id,
-      department_id: selectedDept,
-      date: editingDate,
-      leave_type: tempSelection.has(staff.id) ? null : 'OFF'
-    }));
-
-    try {
-      const leaveRes = await fetch('/api/leaves/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leavesPayload)
-      });
-      if (leaveRes.ok) {
-        const updatedLeaves = new Set<string>();
-        leavesPayload.forEach(p => {
-          if (p.leave_type === 'OFF') updatedLeaves.add(p.staff_id);
-        });
-        setLeavesByDate(prev => ({ ...prev, [editingDate!]: updatedLeaves }));
-      } else {
-        addToast('error', 'Failed to sync attendance.');
-      }
-    } catch (e) {
-      addToast('error', 'Failed to sync attendance.');
-    }
 
     setModalSaving(false);
     setEditingDate(null);
@@ -457,65 +454,42 @@ export default function MonthlyEntryPage() {
     setAllDaysSaving(true);
     
     try {
-      const allDaysPayload: any[] = [];
       const newIncomes = { ...incomes };
-      const newLeaves = { ...leavesByDate };
       const selectionArr = Array.from(tempSelection);
 
+      // Only update local present_staff_ids — no global attendance sync.
+      // Data will persist to daily_income when user clicks "Save Month".
       for (let d = 1; d <= totalDays; d++) {
         const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
         
+        // If "Apply to All" is clicked, we apply exactly what's selected, 
+        // overriding typical 'auto' expected.
         newIncomes[dateStr] = {
           amount: newIncomes[dateStr]?.amount || 0,
           present_staff_ids: selectionArr
         };
-
-        staffList.forEach(staff => {
-          allDaysPayload.push({
-            staff_id: staff.id,
-            department_id: selectedDept,
-            date: dateStr,
-            leave_type: tempSelection.has(staff.id) ? null : 'OFF'
-          });
-        });
       }
 
-      const res = await fetch('/api/leaves/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(allDaysPayload)
-      });
-
-      if (res.ok) {
-        for (let d = 1; d <= totalDays; d++) {
-           const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
-           const dailyLeaves = new Set<string>();
-           staffList.forEach(s => {
-             if (!tempSelection.has(s.id)) dailyLeaves.add(s.id);
-           });
-           newLeaves[dateStr] = dailyLeaves;
-        }
-        
-        setIncomes(newIncomes);
-        setLeavesByDate(newLeaves);
-        addToast('success', `Applied selection to all ${totalDays} days of the month.`);
-        setEditingDate(null);
-      } else {
-        addToast('error', 'Failed to save bulk selection.');
-      }
+      setIncomes(newIncomes);
+      addToast('success', `Applied selection to all ${totalDays} days of the month.`);
+      setEditingDate(null);
     } catch (err) {
-      addToast('error', 'An error occurred during bulk save.');
+      addToast('error', 'An error occurred during bulk apply.');
     } finally {
       setAllDaysSaving(false);
     }
   };
 
   // Group staff by role for the modal
-  const staffByRole = staffList.reduce((acc, staff) => {
-    if (!acc[staff.role]) acc[staff.role] = [];
-    acc[staff.role].push(staff);
-    return acc;
-  }, {} as Record<string, Staff[]>);
+  const getStaffByRole = () => {
+    const targetList = isAutoManual ? autoStaffList : staffList;
+    return targetList.reduce((acc, staff) => {
+      if (!acc[staff.role]) acc[staff.role] = [];
+      acc[staff.role].push(staff);
+      return acc;
+    }, {} as Record<string, Staff[]>);
+  };
+  const staffByRole = getStaffByRole();
 
   return (
     <div>
@@ -716,7 +690,18 @@ export default function MonthlyEntryPage() {
       )}
 
       {/* Staff-wise Share Breakdown Preview */}
-      {selectedDept && deptRules.length > 0 && staffList.length > 0 && (() => {
+      {selectedDept && deptRules.length > 0 && (staffList.length > 0 || autoStaffList.length > 0 || manualStaffList.length > 0) && (() => {
+        if (isAutoManual) {
+          return (
+            <div className="glass-card" style={{ padding: '24px', textAlign: 'center', background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed rgba(59, 130, 246, 0.4)' }}>
+              <div style={{ fontSize: '18px', marginBottom: '8px' }}>🚀</div>
+              <h3 style={{ fontSize: '15px', color: '#60a5fa', margin: '0 0 4px 0' }}>Complex Hybrid Calculation</h3>
+              <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, maxWidth: '600px', display: 'inline-block' }}>
+                Preview is currently disabled for Auto + Manual mode due to complex isolated pool distribution and daily TDA distribution rules. Save the month and generate the report to view the final shares!
+              </p>
+            </div>
+          );
+        }
         const tda = parseFloat(deptTotalAmount) || 0;
         const colCount = isMonthlyBased ? 7 : 6;
 
@@ -730,11 +715,19 @@ export default function MonthlyEntryPage() {
         });
 
         // Count off/CL days per staff from leavesByDate
+        // Use department-level present_staff_ids from incomes (not global leaves)
         const getAbsentDays = (staffId: string): number => {
           let absent = 0;
           for (let d = 1; d <= totalDays; d++) {
             const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
-            if (leavesByDate[dateStr]?.has(staffId)) absent++;
+            const dayData = incomes[dateStr];
+            if (dayData && dayData.present_staff_ids && dayData.present_staff_ids.length > 0) {
+              // Explicit staff list exists — absent if not in it
+              if (!dayData.present_staff_ids.includes(staffId)) absent++;
+            } else {
+              // No explicit list — fall back to global leaves
+              if (leavesByDate[dateStr]?.has(staffId)) absent++;
+            }
           }
           return absent;
         };
@@ -1297,9 +1290,11 @@ export default function MonthlyEntryPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[
                   { key: 'income', label: '🏥 Day / Department Income', desc: 'Enter daily income for the department' },
-                  { key: 'staff_based', label: '👤 Staff Income-wise', desc: 'Enter income per staff member directly' }
+                  { key: 'staff_based', label: '👤 Staff Income-wise', desc: 'Enter income per staff member directly' },
+                  { key: 'auto_manual', label: '🎛️ Auto + Manual Staff', desc: 'Manage isolated Auto and Manual calculated staff pools' }
                 ].map(opt => {
-                  const isActive = isStaffBased ? opt.key === 'staff_based' : opt.key === 'income';
+                  const isActive = opt.key === selectedDepartmentData?.calculation_method || 
+                                  (!selectedDepartmentData?.calculation_method && opt.key === 'income');
                   return (
                     <button
                       key={opt.key}
@@ -1435,7 +1430,235 @@ export default function MonthlyEntryPage() {
           )}
 
           <div style={{ overflowX: 'auto' }}>
-            {isStaffBased ? (
+            {isAutoManual ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                  <div style={{ padding: '12px 20px', background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#60a5fa' }}>Auto-Distributed Staff</h4>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Calculated via TDA & Attendance</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>Staff Member</th>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Applicable Rule</th>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '60px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {autoStaffList.length === 0 ? (
+                        <tr><td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No auto staff found.</td></tr>
+                      ) : autoStaffList.map(staff => {
+                        const rule = deptRules.find(r => r.role.toUpperCase().trim() === staff.role.toUpperCase().trim());
+                        return (
+                          <tr key={staff.id} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                            <td style={{ padding: '10px 20px', fontWeight: 500, color: '#f8fafc', fontSize: '14px' }}>
+                              <div style={{ fontWeight: 600 }}>{staff.name}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px' }}>{staff.staff_code || 'No Code'} • {staff.role}</div>
+                            </td>
+                            <td style={{ padding: '10px 20px' }}>
+                              {rule ? (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#10b981' }}>{rule.role}</span>
+                                  <span style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                    {rule.percentage}% • {rule.distribution_type === 'group' ? 'Group' : 'Individual'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 600 }}>⚠ No Matching Rule</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                              <button
+                                onClick={() => setAutoStaffList(prev => prev.filter(s => s.id !== staff.id))}
+                                style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px' }}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
+                        <td colSpan={3} style={{ padding: '12px 20px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Add Auto Staff:</span>
+                            <select
+                              className="select-field"
+                              style={{ maxWidth: '300px', height: '36px', fontSize: '13px' }}
+                              value=""
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                const id = e.target.value;
+                                if (manualStaffList.find(s => s.id === id)) {
+                                  addToast('error', 'Staff is already in Manual pool.');
+                                  return;
+                                }
+                                const staffObj = globalStaffList.find(s => s.id === id);
+                                if (staffObj && !autoStaffList.find(s => s.id === id)) setAutoStaffList(prev => [...prev, staffObj]);
+                              }}
+                            >
+                              <option value="">-- Select Staff to Add --</option>
+                              {globalStaffList.filter(s => !autoStaffList.find(x => x.id === s.id)).map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                  <div style={{ padding: '12px 20px', background: 'rgba(245, 158, 11, 0.1)', borderBottom: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f59e0b' }}>Manual-Distributed Staff</h4>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Fixed Working Amounts</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>Staff Member</th>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '200px' }}>Applicable Rule</th>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px', textAlign: 'right' }}>Working Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualStaffList.length === 0 ? (
+                        <tr><td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No manual staff found.</td></tr>
+                      ) : manualStaffList.map(staff => {
+                        const rule = deptRules.find(r => r.role.toUpperCase().trim() === staff.role.toUpperCase().trim());
+                        return (
+                          <tr key={staff.id} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                            <td style={{ padding: '10px 20px', fontWeight: 500, color: '#f8fafc', fontSize: '14px' }}>
+                              <div style={{ fontWeight: 600 }}>{staff.name}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px' }}>{staff.staff_code || 'No Code'} • {staff.role}</div>
+                            </td>
+                            <td style={{ padding: '10px 20px' }}>
+                              {rule ? (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#10b981' }}>{rule.role}</span>
+                                  <span style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                    {rule.percentage}% • {rule.distribution_type === 'group' ? 'Group' : 'Individual'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span style={{ color: '#ef4444', fontSize: '11px', fontWeight: 600 }}>⚠ No Matching Rule</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                                <div style={{ position: 'relative', width: '160px' }}>
+                                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '13px', fontWeight: 600 }}>₹</span>
+                                  <input
+                                    type="number"
+                                    className="text-input"
+                                    style={{ paddingLeft: '24px', height: '36px', fontSize: '14px', width: '100%' }}
+                                    value={staffAmounts[staff.id] || ''}
+                                    onChange={(e) => setStaffAmounts(prev => ({ ...prev, [staff.id]: e.target.value }))}
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => setManualStaffList(prev => prev.filter(s => s.id !== staff.id))}
+                                  style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px' }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
+                        <td colSpan={3} style={{ padding: '12px 20px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Add Manual Staff:</span>
+                            <select
+                              className="select-field"
+                              style={{ maxWidth: '300px', height: '36px', fontSize: '13px' }}
+                              value=""
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                const id = e.target.value;
+                                if (autoStaffList.find(s => s.id === id)) {
+                                  addToast('error', 'Staff is already in Auto pool.');
+                                  return;
+                                }
+                                const staffObj = globalStaffList.find(s => s.id === id);
+                                if (staffObj && !manualStaffList.find(s => s.id === id)) setManualStaffList(prev => [...prev, staffObj]);
+                              }}
+                            >
+                              <option value="">-- Select Staff to Add --</option>
+                              {globalStaffList.filter(s => !manualStaffList.find(x => x.id === s.id)).map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  <div style={{ padding: '12px 20px', background: 'rgba(16, 185, 129, 0.1)', borderBottom: '1px solid rgba(16, 185, 129, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#10b981' }}>Daily Income & Attendance Overrides</h4>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>For Auto Staff Pool</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
+                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
+                        {attendanceRule !== 'none' && (
+                          <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff (Auto)</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: totalDays }).map((_, i) => {
+                        const day = i + 1;
+                        const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
+                        const state = incomes[dateStr];
+                        const amount = state?.amount || '';
+                        const explicitPresent = state?.present_staff_ids;
+                        const leavesCount = leavesByDate[dateStr]?.size || 0;
+                        let presentText = '';
+                        if (explicitPresent) {
+                          presentText = `${explicitPresent.length}/${autoStaffList.length} Selected (Manual)`;
+                        } else {
+                          presentText = `${autoStaffList.length - leavesCount}/${autoStaffList.length} Expected (Auto)`;
+                        }
+                        return (
+                          <tr key={day} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                            <td style={{ padding: '10px 20px', fontWeight: 600, color: '#cbd5e1', fontSize: '14px' }}>{day}</td>
+                            <td style={{ padding: '10px 20px' }}>
+                              <div style={{ position: 'relative', maxWidth: '200px' }}>
+                                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '13px', fontWeight: 600 }}>₹</span>
+                                <input type="number" className="text-input" style={{ paddingLeft: '24px', height: '36px', fontSize: '14px' }} value={amount} onChange={(e) => handleIncomeChange(day, e.target.value)} placeholder="0" min="0" step="0.01" />
+                              </div>
+                            </td>
+                            {attendanceRule !== 'none' && (
+                              <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                                <button className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openModal(dateStr)} style={{ padding: '6px 12px', fontSize: '13px' }}>
+                                  <Users size={14} style={{ marginRight: '6px' }} />
+                                  {presentText}
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            ) : isStaffBased ? (
+
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>

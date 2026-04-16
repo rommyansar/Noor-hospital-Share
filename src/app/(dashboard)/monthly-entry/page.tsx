@@ -45,6 +45,7 @@ export default function MonthlyEntryPage() {
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [tempSelection, setTempSelection] = useState<Set<string>>(new Set());
   const [modalSaving, setModalSaving] = useState(false);
+  const [allDaysSaving, setAllDaysSaving] = useState(false);
 
   const totalDays = getDaysInMonth(year, month);
   const monthStr = `${year}-${String(month).padStart(2, '0')}`;
@@ -63,7 +64,7 @@ export default function MonthlyEntryPage() {
       return;
     }
     setLoading(true);
-    
+
     try {
       // ── BATCH 1: Fetch ALL independent data in parallel (was 7+ sequential calls → 1 batch) ──
       const [dtRes, staffRes, saRes, addonRes, rulesRes, inRes, lvRes] = await Promise.all([
@@ -125,7 +126,7 @@ export default function MonthlyEntryPage() {
 
       // ── BATCH 2: Fetch addon department staff & rules in parallel (was sequential loop) ──
       const addonDeptIds = loadedAddons.filter(a => a.addon_department_id).map(a => a.addon_department_id);
-      const addonPromises = addonDeptIds.map(addonDeptId => 
+      const addonPromises = addonDeptIds.map(addonDeptId =>
         Promise.all([
           fetch(`/api/staff?department_id=${addonDeptId}`),
           fetch(`/api/rules?department_id=${addonDeptId}`),
@@ -140,7 +141,7 @@ export default function MonthlyEntryPage() {
         })
       );
       const addonResults = await Promise.all(addonPromises);
-      
+
       const newAddonStaffMap: Record<string, Staff[]> = {};
       const newAddonRulesMap: Record<string, DepartmentRule[]> = {};
       for (const result of addonResults) {
@@ -187,15 +188,17 @@ export default function MonthlyEntryPage() {
         });
       }
       setLeavesByDate(newLeaves);
-    } catch (err) {
-      addToast('error', 'Failed to load data');
+    } catch (err: any) {
+      console.error('loadData error:', err);
+      addToast('error', `Failed to load data: ${err.message}`);
     }
-    
+
     setLoading(false);
   }, [selectedDept, monthStr, addToast, departments]);
 
   useEffect(() => { fetchDepartments(); }, []);
   useEffect(() => { loadData(); }, [loadData]);
+
 
   const handleIncomeChange = (day: number, val: string) => {
     const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
@@ -212,7 +215,7 @@ export default function MonthlyEntryPage() {
   const handleSaveAll = async () => {
     if (!selectedDept) return;
     setSaving(true);
-    
+
     const isStaffBased = departments.find(d => d.id === selectedDept)?.calculation_method === 'staff_based';
 
     try {
@@ -226,7 +229,7 @@ export default function MonthlyEntryPage() {
             percentage: null
           };
         });
-        
+
         const res = await fetch('/api/monthly-staff-amounts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -237,10 +240,7 @@ export default function MonthlyEntryPage() {
           }),
         });
 
-        if (res.ok) {
-          addToast('success', 'Monthly staff amounts saved successfully');
-          loadData();
-        } else {
+        if (!res.ok) {
           throw new Error('Failed to save staff amounts');
         }
       } else {
@@ -263,10 +263,7 @@ export default function MonthlyEntryPage() {
           body: JSON.stringify(recordsToSave),
         });
 
-        if (res.ok) {
-          addToast('success', 'Monthly entry saved successfully');
-          loadData();
-        } else {
+        if (!res.ok) {
           throw new Error('Failed to save');
         }
       }
@@ -287,7 +284,7 @@ export default function MonthlyEntryPage() {
         })
       });
 
-      // Save Dept Total Amount and Applied Rules
+      // Save Dept Total Amount, Applied Rules, and Selected Staff
       await fetch('/api/monthly-totals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -300,10 +297,14 @@ export default function MonthlyEntryPage() {
         })
       });
 
+      addToast('success', 'Monthly entry saved successfully');
+      // Re-fetch ALL data AFTER all saves complete to avoid race conditions
+      await loadData();
+
     } catch (err) {
       addToast('error', 'An error occurred while saving.');
     }
-    
+
     setSaving(false);
   };
 
@@ -358,6 +359,8 @@ export default function MonthlyEntryPage() {
   const attendanceRule = selectedDepartmentData?.attendance_rule || 'daily';
   const isStaffBased = selectedDepartmentData?.calculation_method === 'staff_based';
   const isMonthlyBased = attendanceRule === 'monthly';
+
+
   const totalIncome = Object.values(incomes).reduce((sum, val) => sum + (val?.amount || 0), 0);
   const totalStaffAmount = Object.values(staffAmounts).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
 
@@ -405,7 +408,7 @@ export default function MonthlyEntryPage() {
   const saveModalSelection = async () => {
     if (!editingDate) return;
     setModalSaving(true);
-    
+
     // 1. Save presence locally (no network call yet — will save with "Save Month")
     setIncomes(prev => ({
       ...prev,
@@ -447,6 +450,66 @@ export default function MonthlyEntryPage() {
     addToast('success', 'Staff selection saved for ' + editingDate.split('-')[2]);
   };
 
+  const handleApplyToAllDays = async () => {
+    if (!editingDate || !selectedDept) return;
+    if (!confirm('This will apply this exact staff selection to EVERY day of this month. Existing daily staff selections for this department will be overwritten. Continue?')) return;
+    
+    setAllDaysSaving(true);
+    
+    try {
+      const allDaysPayload: any[] = [];
+      const newIncomes = { ...incomes };
+      const newLeaves = { ...leavesByDate };
+      const selectionArr = Array.from(tempSelection);
+
+      for (let d = 1; d <= totalDays; d++) {
+        const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+        
+        newIncomes[dateStr] = {
+          amount: newIncomes[dateStr]?.amount || 0,
+          present_staff_ids: selectionArr
+        };
+
+        staffList.forEach(staff => {
+          allDaysPayload.push({
+            staff_id: staff.id,
+            department_id: selectedDept,
+            date: dateStr,
+            leave_type: tempSelection.has(staff.id) ? null : 'OFF'
+          });
+        });
+      }
+
+      const res = await fetch('/api/leaves/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allDaysPayload)
+      });
+
+      if (res.ok) {
+        for (let d = 1; d <= totalDays; d++) {
+           const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+           const dailyLeaves = new Set<string>();
+           staffList.forEach(s => {
+             if (!tempSelection.has(s.id)) dailyLeaves.add(s.id);
+           });
+           newLeaves[dateStr] = dailyLeaves;
+        }
+        
+        setIncomes(newIncomes);
+        setLeavesByDate(newLeaves);
+        addToast('success', `Applied selection to all ${totalDays} days of the month.`);
+        setEditingDate(null);
+      } else {
+        addToast('error', 'Failed to save bulk selection.');
+      }
+    } catch (err) {
+      addToast('error', 'An error occurred during bulk save.');
+    } finally {
+      setAllDaysSaving(false);
+    }
+  };
+
   // Group staff by role for the modal
   const staffByRole = staffList.reduce((acc, staff) => {
     if (!acc[staff.role]) acc[staff.role] = [];
@@ -464,12 +527,12 @@ export default function MonthlyEntryPage() {
           </p>
         </div>
         {selectedDept && (
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={handleSaveAll}
             disabled={saving || loading}
           >
-            {saving ? <div className="spinner" style={{width: 16, height: 16, borderWidth: 2, marginRight: 8}} /> : <Save size={18} style={{ marginRight: 8 }} />}
+            {saving ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2, marginRight: 8 }} /> : <Save size={18} style={{ marginRight: 8 }} />}
             Save Month
           </button>
         )}
@@ -561,7 +624,7 @@ export default function MonthlyEntryPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="form-label text-xs">Total Department Amount (₹)</label>
-              <input 
+              <input
                 type="number"
                 min="0"
                 step="0.01"
@@ -588,10 +651,10 @@ export default function MonthlyEntryPage() {
               const matchingStaff = staffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim());
               const isApplied = appliedMainRules.includes(rule.id);
               return (
-                <div 
-                  key={rule.id} 
+                <div
+                  key={rule.id}
                   onClick={() => {
-                    setAppliedMainRules(prev => 
+                    setAppliedMainRules(prev =>
                       prev.includes(rule.id) ? prev.filter(id => id !== rule.id) : [...prev, rule.id]
                     );
                   }}
@@ -656,10 +719,12 @@ export default function MonthlyEntryPage() {
       {selectedDept && deptRules.length > 0 && staffList.length > 0 && (() => {
         const tda = parseFloat(deptTotalAmount) || 0;
         const colCount = isMonthlyBased ? 7 : 6;
-        
-        // Build role counts for group distribution
+
+        const effectiveStaffList = staffList;
+
+        // Build role counts for group distribution (only from selected/effective staff)
         const roleCounts: Record<string, number> = {};
-        staffList.forEach(s => {
+        effectiveStaffList.forEach(s => {
           const rKey = s.role.toUpperCase().trim();
           roleCounts[rKey] = (roleCounts[rKey] || 0) + 1;
         });
@@ -674,49 +739,88 @@ export default function MonthlyEntryPage() {
           return absent;
         };
 
-        type RowData = { 
-          staff: Staff; 
-          rule: DepartmentRule | null; 
-          pct: number; 
-          distType: string; 
-          estimatedAmount: number; 
-          poolTotal: number; 
-          absentDays: number; 
-          workingDays: number; 
+        type RowData = {
+          staff: Staff;
+          rule: DepartmentRule | null;
+          pct: number;
+          distType: string;
+          estimatedAmount: number;
+          poolTotal: number;
+          absentDays: number;
+          workingDays: number;
           section: string;
           adjustedBase: number;
           workAmount: number;
         };
 
         // === Primary Department Staff ===
-        const primaryRows: RowData[] = staffList.map(s => {
+        const primaryRows: RowData[] = effectiveStaffList.map(s => {
           const rKey = s.role.toUpperCase().trim();
           const rule = deptRules.find(r => r.role.toUpperCase().trim() === rKey);
           const absentDays = getAbsentDays(s.id);
           const workingDays = totalDays - absentDays;
 
           if (!rule) return { staff: s, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'primary', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
-          
+
           const pct = parseFloat(rule.percentage) || 0;
           const overridePct = s.department_percentages?.[selectedDept];
           const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : pct;
-          
+
           let amount = 0;
           let poolTotal = 0;
-          let adjustedBase = tda;
+          let adjustedBase = 0;
 
-          if (tda > 0) {
-            const ratio = (isMonthlyBased && totalDays > 0) ? (workingDays / totalDays) : 1;
-            adjustedBase = Math.round(tda * ratio * 100) / 100;
+          const isNone = attendanceRule === 'none';
 
-            if (rule.distribution_type === 'group') {
-              poolTotal = Math.round(adjustedBase * (effectivePct / 100) * 100) / 100;
-              const count = roleCounts[rKey] || 1;
-              amount = Math.round((poolTotal / count) * 100) / 100;
-            } else {
-              amount = Math.round(adjustedBase * (effectivePct / 100) * 100) / 100;
+          if (tda > 0 || Object.keys(incomes).length > 0) {
+            // DAILY LOOP SIMULATION
+            for (let d = 1; d <= totalDays; d++) {
+              const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+              const dayData = incomes[dateStr];
+              const dailyIncomeAmount = tda > 0 ? (tda / totalDays) : (dayData?.amount || 0);
+              if (dailyIncomeAmount <= 0) continue;
+
+              // staff presence
+              const isLeave = (!isNone) && leavesByDate[dateStr]?.has(s.id);
+
+              let isPresent = false;
+              let presentRoleCount = 0;
+
+              if (dayData && dayData.present_staff_ids && dayData.present_staff_ids.length > 0) {
+                isPresent = dayData.present_staff_ids.includes(s.id) && !isLeave;
+                // count how many in this role are present today
+                effectiveStaffList.forEach(st => {
+                  if (dayData.present_staff_ids!.includes(st.id) && st.role.toUpperCase().trim() === rKey && (!(!isNone && leavesByDate[dateStr]?.has(st.id)))) {
+                    presentRoleCount++;
+                  }
+                });
+              } else {
+                isPresent = !isLeave;
+                // count all staff in this role not on leave
+                effectiveStaffList.forEach(st => {
+                  if (st.role.toUpperCase().trim() === rKey && (!(!isNone && leavesByDate[dateStr]?.has(st.id)))) {
+                    presentRoleCount++;
+                  }
+                });
+              }
+
+              if (!isPresent) continue;
+              adjustedBase += dailyIncomeAmount;
+              if (presentRoleCount === 0) presentRoleCount = 1;
+
+              if (rule.distribution_type === 'group') {
+                amount += (dailyIncomeAmount * (effectivePct / 100)) / presentRoleCount;
+                poolTotal += (dailyIncomeAmount * (effectivePct / 100));
+              } else {
+                amount += dailyIncomeAmount * (effectivePct / 100);
+              }
             }
           }
+
+          amount = Math.round(amount * 100) / 100;
+          poolTotal = Math.round(poolTotal * 100) / 100;
+          adjustedBase = Math.round(adjustedBase * 100) / 100;
+
           const workAmount = parseFloat(staffAmounts[s.id]) || 0;
           return { staff: s, rule, pct: effectivePct, distType: rule.distribution_type, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'primary', adjustedBase, workAmount };
         });
@@ -727,11 +831,11 @@ export default function MonthlyEntryPage() {
           const addonDept = departments.find(d => d.id === addon.addon_department_id);
           const aStaff = addonStaffMap[addon.addon_department_id] || [];
           const aRules = addonRulesMap[addon.addon_department_id] || [];
-          const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0 
-            ? addon.applied_rules 
+          const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0
+            ? addon.applied_rules
             : aRules.map(r => r.id);
           const activeRules = aRules.filter(r => activeRuleIds.includes(r.id));
-          
+
           // Pool from MAIN department income
           const pool = tda > 0 ? Math.round(tda * (addon.percentage / 100) * 100) / 100 : 0;
           const addonAttRule = addon.attendance_rule || 'none';
@@ -847,8 +951,10 @@ export default function MonthlyEntryPage() {
               </td>
             )}
             <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: row.workAmount > 0 ? '#3b82f6' : '#64748b' }}>
-                {row.workAmount > 0 ? `₹${row.workAmount.toLocaleString()}` : '—'}
+              <span style={{ fontSize: '13px', fontWeight: 600, color: row.workAmount > 0 || row.adjustedBase > 0 ? '#3b82f6' : '#64748b' }}>
+                {row.workAmount > 0
+                  ? `₹${row.workAmount.toLocaleString()}`
+                  : (row.adjustedBase > 0 ? `₹${row.adjustedBase.toLocaleString()}` : '—')}
               </span>
             </td>
             <td style={{ padding: '10px 20px', textAlign: 'right' }}>
@@ -955,15 +1061,15 @@ export default function MonthlyEntryPage() {
             <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: '#c084fc' }}>⚡</span> External Add-On Department Shares
             </h3>
-            <button 
-              className="btn btn-secondary" 
+            <button
+              className="btn btn-secondary"
               style={{ fontSize: '12px', padding: '6px 12px' }}
               onClick={() => setAddons([...addons, { addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none' }])}
             >
               + Add Add-On
             </button>
           </div>
-          
+
           {addons.length === 0 ? (
             <p className="text-xs text-slate-500 italic">No add-on departments configured for this month.</p>
           ) : (
@@ -976,8 +1082,8 @@ export default function MonthlyEntryPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="form-label text-xs">Target Department</label>
-                        <select 
-                          className="select-field" 
+                        <select
+                          className="select-field"
                           value={addon.addon_department_id}
                           onChange={(e) => {
                             const next = [...addons];
@@ -996,21 +1102,21 @@ export default function MonthlyEntryPage() {
                       <div className="flex gap-2">
                         <div style={{ flex: 1 }}>
                           <label className="form-label text-xs">Percentage (%)</label>
-                          <input 
+                          <input
                             type="number" min="0" max="100" step="0.1"
                             className="input-field"
                             value={addon.percentage}
                             onChange={(e) => {
-                               const next = [...addons];
-                               next[index].percentage = parseFloat(e.target.value) || 0;
-                               setAddons(next);
+                              const next = [...addons];
+                              next[index].percentage = parseFloat(e.target.value) || 0;
+                              setAddons(next);
                             }}
                           />
                           <p style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>1 = 1%, 0.5 = 0.5%</p>
                         </div>
                         <div className="flex items-end" style={{ paddingBottom: '18px' }}>
-                          <button 
-                            className="btn btn-danger" 
+                          <button
+                            className="btn btn-danger"
                             style={{ padding: '10px' }}
                             onClick={() => {
                               setAddons(addons.filter((_, i) => i !== index));
@@ -1036,7 +1142,7 @@ export default function MonthlyEntryPage() {
                           {(addonRulesMap[addon.addon_department_id] || []).map(rule => {
                             const isApplied = (addon.applied_rules || []).includes(rule.id);
                             return (
-                              <div 
+                              <div
                                 key={rule.id}
                                 onClick={() => {
                                   const next = [...addons];
@@ -1167,8 +1273,8 @@ export default function MonthlyEntryPage() {
         <div className="empty-state"><div className="spinner" style={{ margin: '0 auto' }} /></div>
       ) : (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ 
-            padding: '20px', 
+          <div style={{
+            padding: '20px',
             borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
@@ -1208,8 +1314,8 @@ export default function MonthlyEntryPage() {
                         border: isActive ? '2px solid #3b82f6' : '2px solid rgba(71, 85, 105, 0.3)',
                         cursor: 'pointer',
                         transition: 'all 0.25s ease',
-                        background: isActive 
-                          ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15))' 
+                        background: isActive
+                          ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15))'
                           : 'rgba(15, 23, 42, 0.4)',
                         color: isActive ? '#60a5fa' : '#64748b',
                         boxShadow: isActive ? '0 0 12px rgba(59, 130, 246, 0.15)' : 'none',
@@ -1263,8 +1369,70 @@ export default function MonthlyEntryPage() {
                 {attendanceRule === 'monthly' && '→ Off/CL days deducted from total month — prorated share calculation.'}
                 {attendanceRule === 'none' && '→ Attendance is not counted — direct income entries only.'}
               </p>
+
             </div>
           </div>
+
+          {/* Calculate Auto Working Amount Button */}
+          {isStaffBased && isMonthlyBased && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '14px 20px', marginBottom: '16px', borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1))',
+              border: '1px solid rgba(16, 185, 129, 0.3)'
+            }}>
+              <div>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#10b981', margin: 0 }}>
+                  🧮 Auto-Calculate Working Amounts
+                </p>
+                <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0 0' }}>
+                  Formula: Working Amount = TDA (₹{parseFloat(deptTotalAmount || '0').toLocaleString()}) × (Present Days ÷ {totalDays} Total Days)
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const tda = parseFloat(deptTotalAmount) || 0;
+                  if (tda <= 0) {
+                    addToast('error', 'Please enter a Total Department Amount first.');
+                    return;
+                  }
+                  if (staffList.length === 0) {
+                    addToast('error', 'No staff found for this department.');
+                    return;
+                  }
+
+                  const newAmounts: Record<string, string> = {};
+                  const details: string[] = [];
+
+                  staffList.forEach(staff => {
+                    let absent = 0;
+                    for (let d = 1; d <= totalDays; d++) {
+                      const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+                      if (leavesByDate[dateStr]?.has(staff.id)) absent++;
+                    }
+                    const presentDays = totalDays - absent;
+                    const ratio = totalDays > 0 ? (presentDays / totalDays) : 1;
+                    const workingAmount = Math.round(tda * ratio * 100) / 100;
+                    newAmounts[staff.id] = workingAmount.toString();
+                    details.push(`${staff.name}: ${presentDays}/${totalDays} days → ₹${workingAmount.toLocaleString()}`);
+                  });
+
+                  setStaffAmounts(newAmounts);
+                  addToast('success', `✅ Working amounts calculated for ${staffList.length} staff members.`);
+                }}
+                style={{
+                  padding: '10px 24px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#fff', border: 'none', cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  transition: 'all 0.2s ease', textTransform: 'uppercase', letterSpacing: '0.5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                🧮 Calculate Auto Working Amount
+              </button>
+            </div>
+          )}
 
           <div style={{ overflowX: 'auto' }}>
             {isStaffBased ? (
@@ -1273,7 +1441,9 @@ export default function MonthlyEntryPage() {
                   <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>Staff Member</th>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '200px' }}>Applicable Rule</th>
-                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '220px', textAlign: 'right' }}>Amount (Direct)</th>
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px', textAlign: 'right' }}>
+                      Working Amount
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1305,9 +1475,9 @@ export default function MonthlyEntryPage() {
                         <td style={{ padding: '10px 20px', textAlign: 'right' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                             <div style={{ position: 'relative', width: '160px' }}>
-                              <span style={{ 
-                                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', 
-                                color: '#64748b', fontSize: '13px', fontWeight: 600 
+                              <span style={{
+                                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                                color: '#64748b', fontSize: '13px', fontWeight: 600
                               }}>₹</span>
                               <input
                                 type="number"
@@ -1350,7 +1520,7 @@ export default function MonthlyEntryPage() {
 
                   {/* Add Extra Staff Option */}
                   <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
-                    <td colSpan={3} style={{ padding: '12px 20px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                    <td colSpan={isMonthlyBased ? 5 : 3} style={{ padding: '12px 20px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Add Extra Staff:</span>
                         <select
@@ -1362,7 +1532,7 @@ export default function MonthlyEntryPage() {
                             const newStaffId = e.target.value;
                             const staffObj = globalStaffList.find(s => s.id === newStaffId);
                             if (staffObj && !staffList.find(s => s.id === newStaffId)) {
-                               setStaffList(prev => [...prev, staffObj]);
+                              setStaffList(prev => [...prev, staffObj]);
                             }
                           }}
                         >
@@ -1385,7 +1555,7 @@ export default function MonthlyEntryPage() {
                   <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
-                    {attendanceRule === 'daily' && (
+                    {attendanceRule !== 'none' && (
                       <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff</th>
                     )}
                   </tr>
@@ -1397,9 +1567,9 @@ export default function MonthlyEntryPage() {
                     const state = incomes[dateStr];
                     const amount = state?.amount || '';
                     const explicitPresent = state?.present_staff_ids;
-                    
+
                     const leavesCount = leavesByDate[dateStr]?.size || 0;
-                    
+
                     let presentText = '';
                     if (explicitPresent) {
                       presentText = `${explicitPresent.length}/${staffList.length} Selected (Manual)`;
@@ -1414,9 +1584,9 @@ export default function MonthlyEntryPage() {
                         </td>
                         <td style={{ padding: '10px 20px' }}>
                           <div style={{ position: 'relative', maxWidth: '200px' }}>
-                            <span style={{ 
-                              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', 
-                              color: '#64748b', fontSize: '13px', fontWeight: 600 
+                            <span style={{
+                              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                              color: '#64748b', fontSize: '13px', fontWeight: 600
                             }}>₹</span>
                             <input
                               type="number"
@@ -1430,7 +1600,7 @@ export default function MonthlyEntryPage() {
                             />
                           </div>
                         </td>
-                        {attendanceRule === 'daily' && (
+                        {attendanceRule !== 'none' && (
                           <td style={{ padding: '10px 20px', textAlign: 'right' }}>
                             <button 
                               className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} 
@@ -1462,7 +1632,7 @@ export default function MonthlyEntryPage() {
                 <X size={20} />
               </button>
             </div>
-            
+
             <div style={{ padding: '16px', maxHeight: '60vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button className="btn btn-secondary" onClick={() => toggleAll(true)} style={{ flex: 1 }}>
@@ -1478,37 +1648,37 @@ export default function MonthlyEntryPage() {
                 const allSelected = availableStaff.length > 0 && availableStaff.every(s => tempSelection.has(s.id));
                 return (
                   <div key={role} style={{ marginBottom: '20px' }}>
-                    <div style={{ 
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                      background: 'rgba(30, 41, 59, 0.5)', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px' 
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'rgba(30, 41, 59, 0.5)', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px'
                     }}>
                       <span className="badge badge-info">{role}</span>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={allSelected} 
-                          onChange={(e) => toggleRole(role, e.target.checked)} 
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={(e) => toggleRole(role, e.target.checked)}
                         /> Select All {role}
                       </label>
                     </div>
-                    
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       {list.map(staff => {
                         const isLeave = leavesByDate[editingDate]?.has(staff.id);
                         const isChecked = tempSelection.has(staff.id);
                         return (
-                          <label key={staff.id} style={{ 
-                            display: 'flex', alignItems: 'center', gap: '8px', 
+                          <label key={staff.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
                             padding: '8px 12px', borderRadius: '6px',
-                            cursor: 'pointer', 
+                            cursor: 'pointer',
                             border: `1px solid ${isChecked ? 'rgba(16, 185, 129, 0.3)' : 'rgba(51, 65, 85, 0.5)'}`,
                             background: isChecked ? 'rgba(16, 185, 129, 0.05)' : 'rgba(15, 23, 42, 0.4)',
                             transition: 'all 0.15s ease'
                           }}>
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               checked={isChecked}
-                              onChange={() => toggleStaff(staff.id)} 
+                              onChange={() => toggleStaff(staff.id)}
                             />
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <span style={{ fontSize: '14px', fontWeight: 500 }}>{staff.name}</span>
@@ -1525,18 +1695,32 @@ export default function MonthlyEntryPage() {
               })}
 
             </div>
-            
-            <div className="modal-footer" style={{ borderTop: '1px solid rgba(71, 85, 105, 0.2)', padding: '16px' }}>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid rgba(71, 85, 105, 0.2)', padding: '16px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setEditingDate(null)}>Cancel</button>
-              <button 
-                className="btn btn-primary" 
+              
+              <button
+                className="btn btn-secondary"
+                style={{ background: 'rgba(96, 165, 250, 0.1)', color: '#60a5fa', borderColor: 'rgba(96, 165, 250, 0.3)' }}
+                onClick={handleApplyToAllDays}
+                disabled={allDaysSaving || modalSaving}
+              >
+                {allDaysSaving ? (
+                  <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, marginRight: 6 }} /> Applying...</>
+                ) : (
+                  <>Apply Selection to All Days</>
+                )}
+              </button>
+
+              <button
+                className="btn btn-primary"
                 onClick={saveModalSelection}
-                disabled={modalSaving}
+                disabled={modalSaving || allDaysSaving}
               >
                 {modalSaving ? (
-                  <><div className="spinner" style={{width: 14, height: 14, borderWidth: 2, marginRight: 6}} /> Saving...</>
+                  <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, marginRight: 6 }} /> Saving...</>
                 ) : (
-                  <>Save Details for {editingDate.split('-')[2]}</>
+                  <>Save for {editingDate.split('-')[2]}</>
                 )}
               </button>
             </div>
@@ -1544,6 +1728,7 @@ export default function MonthlyEntryPage() {
         </div>
       )}
 
+      {/* Side-effects of Daily Model: calculations are derived from daily presence logic */}
     </div>
   );
 }

@@ -561,16 +561,16 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     // Available width in landscape legal: ~356 - 24 (margins) = 332mm
     const colStyles: Record<number, any> = {
       0:  { halign: 'center', cellWidth: 10 },    // Sr.
-      1:  { halign: 'left', cellWidth: 35 },      // Staff Name
-      2:  { halign: 'center', cellWidth: 15 },    // Total Days
-      3:  { halign: 'center', cellWidth: 15 },    // Off/CL
-      4:  { halign: 'center', cellWidth: 15 },    // Working Days
+      1:  { halign: 'left', cellWidth: 'auto' },  // Staff Name
+      2:  { halign: 'center', cellWidth: 14 },    // Total Days
+      3:  { halign: 'center', cellWidth: 14 },    // Off/CL
+      4:  { halign: 'center', cellWidth: 16 },    // Working Days
       5:  { halign: 'right', cellWidth: 30 },     // Working Amount
-      6:  { halign: 'center', cellWidth: 15 },    // %
+      6:  { halign: 'center', cellWidth: 14 },    // %
       7:  { halign: 'center', cellWidth: 20 },    // Distribution
-      8:  { halign: 'center', cellWidth: 15 },    // Group Count
-      9:  { halign: 'left', cellWidth: 130 },     // Calculation Breakdown
-      10: { halign: 'right', cellWidth: 32 },     // Final Share
+      8:  { halign: 'center', cellWidth: 14 },    // Group Count
+      9:  { halign: 'left', cellWidth: 'auto' },  // Calculation Breakdown
+      10: { halign: 'right', cellWidth: 30 },     // Final Share
     };
 
     // Helper to render a section with a section header
@@ -616,15 +616,15 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
           fillColor: [30, 41, 59], // slate-800
           textColor: [255, 255, 255],
           fontStyle: 'bold',
-          fontSize: 7.5,
+          fontSize: 8.5,
           halign: 'center',
-          cellPadding: { top: 2.5, bottom: 2.5, left: 2, right: 2 },
+          cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
           lineWidth: 0.1,
           lineColor: [71, 85, 105],
         },
         bodyStyles: {
-          fontSize: 7,
-          cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          fontSize: 8.5,
+          cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
           lineWidth: 0.1,
           lineColor: [203, 213, 225],
           textColor: [15, 23, 42],

@@ -115,6 +115,15 @@ export async function GET(req: Request) {
         pct: breakdownObj.addon_pct || breakdownObj.percentage || '0%',
         attendance: breakdownObj.attendance_rule || 'none',
         note: breakdownObj.note || '',
+        pool: breakdownObj.addon_pool || 0,
+        adjusted_pool: breakdownObj.adjusted_pool || 0,
+        present_days: breakdownObj.present_days ?? 0,
+        total_days: breakdownObj.total_days ?? 0,
+        absent_days: breakdownObj.absent_days ?? 0,
+        present_count: r.present_count || 1,
+        distribution_type: breakdownObj.distribution_type || 'individual',
+        amount_source: breakdownObj.amount_source || 'TDA',
+        manual_amount: breakdownObj.manual_amount || null,
       });
       // If this staff ONLY has addon entries (no core OT), use addon dept name
       if (!staffTotals[r.staff_id].combined_working_amount && staffTotals[r.staff_id].origin_department === mainDeptName) {

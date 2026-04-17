@@ -274,16 +274,16 @@ export async function POST(req: Request) {
               staff_id: staff.id,
               department_id: department_id,
               date: `${month}-01`,
-              income_amount: totalOTIncome,
+              income_amount: pool,  // The actual pool base (manual amount or TDA×pct)
               calculation_type: 'rule',
-              rule_percentage: String(addonPct),
+              rule_percentage: isManual ? '100' : String(addonPct),  // For manual: 100% of pool; for TDA: the pct
               distribution_type: distType,
               pool_amount: pool,
               present_count: presentCount,
               final_share: share,
               breakdown: {
                 role: staff.role,
-                percentage: `${addonPct}%`,
+                percentage: isManual ? '100%' : `${addonPct}%`,
                 type: 'addon_share',
                 note: `Add-on: ${addonDeptName} ${noteExtra}`,
                 addon_department: addonDeptName,
@@ -292,6 +292,8 @@ export async function POST(req: Request) {
                 adjusted_pool: adjustedPool,
                 distribution_type: distType,
                 attendance_rule: attRule,
+                amount_source: isManual ? 'MANUAL' : 'TDA',
+                manual_amount: isManual ? rawManual : null,
                 total_days: daysInMonth,
                 present_days: presentDays,
                 absent_days: absentDays,

@@ -42,6 +42,8 @@ interface StaffReport {
   combined_working_amount?: number;
   ot_mode?: string;
   ot_group_count?: number;
+  // Addon tracking
+  addon_contributions?: { department: string; share: number; pct: string; attendance: string; note: string }[];
 }
 
 interface ReportData {
@@ -367,6 +369,22 @@ export default function ReportsPage() {
                                     <span style={{ fontSize: '11px', color: '#94a3b8' }}>{s.ot_mode}{(s.ot_group_count || 0) > 1 ? ` (÷${s.ot_group_count})` : ''}</span>
                                   </div>
                                 )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Add-On Contributions */}
+                          {(s.addon_contributions || []).length > 0 && (
+                            <div style={{ padding: '6px 16px 6px 32px', background: 'rgba(99, 102, 241, 0.06)', borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add-Ons:</span>
+                                {(s.addon_contributions || []).map((ac, acIdx) => (
+                                  <div key={acIdx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99, 102, 241, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                                    <span style={{ fontSize: '11px', color: '#c7d2fe', fontWeight: 600 }}>{ac.department}</span>
+                                    <span style={{ fontSize: '11px', color: '#a5b4fc' }}>{ac.pct}</span>
+                                    <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }}>₹{ac.share.toLocaleString('en-IN')}</span>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}

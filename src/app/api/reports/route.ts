@@ -63,17 +63,11 @@ export async function GET(req: Request) {
     const isAddon = breakdownObj?.type === 'addon_share' || !!breakdownObj?.addon_department;
     
     if (!staffTotals[r.staff_id]) {
-      // If it's an addon, use the origin department name from the breakdown note.
-      // Otherwise, it must be from the main department being reported on.
-      const originDept = (isAddon && breakdownObj?.addon_department) 
-        ? breakdownObj.addon_department 
-        : mainDeptName;
-
       staffTotals[r.staff_id] = {
         staff_id: r.staff_id,
         staff_name: r.staff?.name || 'Unknown',
         role: r.staff?.role || 'Unknown',
-        origin_department: originDept,
+        origin_department: mainDeptName,
         total_share: 0,
         days_present: 0,
         daily_details: [],
@@ -87,6 +81,8 @@ export async function GET(req: Request) {
         combined_working_amount: 0,
         ot_mode: '',
         ot_group_count: 0,
+        // Addon tracking
+        addon_contributions: [] as { department: string; share: number; pct: string; attendance: string; note: string }[],
       };
       presentDates[r.staff_id] = new Set();
     }
@@ -107,6 +103,23 @@ export async function GET(req: Request) {
       staffTotals[r.staff_id].combined_working_amount = r.income_amount || 0;
       staffTotals[r.staff_id].ot_mode = breakdownObj.distribution || '';
       staffTotals[r.staff_id].ot_group_count = breakdownObj.presentInRole || 0;
+      // Set origin to main dept for staff with core OT work
+      staffTotals[r.staff_id].origin_department = mainDeptName;
+    }
+
+    // Track addon contributions for combined display
+    if (isAddon && breakdownObj) {
+      staffTotals[r.staff_id].addon_contributions.push({
+        department: breakdownObj.addon_department || 'Unknown',
+        share: r.final_share,
+        pct: breakdownObj.addon_pct || breakdownObj.percentage || '0%',
+        attendance: breakdownObj.attendance_rule || 'none',
+        note: breakdownObj.note || '',
+      });
+      // If this staff ONLY has addon entries (no core OT), use addon dept name
+      if (!staffTotals[r.staff_id].combined_working_amount && staffTotals[r.staff_id].origin_department === mainDeptName) {
+        staffTotals[r.staff_id].origin_department = breakdownObj.addon_department || mainDeptName;
+      }
     }
     
     staffTotals[r.staff_id].total_share += r.final_share;

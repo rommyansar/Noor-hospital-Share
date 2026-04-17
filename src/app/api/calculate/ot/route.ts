@@ -153,11 +153,16 @@ export async function POST(req: Request) {
       }
 
       for (const addon of otAddons) {
-        if (!addon.addon_department_id || (parseFloat(addon.percentage) || 0) <= 0) continue;
-
+        const isManual = addon.amount_source === 'MANUAL';
+        const rawManual = parseFloat(addon.manual_amount) || 0;
         const addonPct = parseFloat(addon.percentage) || 0;
-        const baseIncome = addon.amount_source === 'MANUAL' ? (parseFloat(addon.manual_amount) || 0) : totalOTIncome;
-        const pool = Math.round(baseIncome * (addonPct / 100) * 100) / 100;
+
+        if (!addon.addon_department_id) continue;
+        if (!isManual && addonPct <= 0) continue;
+        if (isManual && rawManual <= 0) continue;
+
+        // If Manual Amount is used, that is the exact pool. Percentage is ignored.
+        const pool = isManual ? rawManual : Math.round(totalOTIncome * (addonPct / 100) * 100) / 100;
         const attRule = addon.attendance_rule || 'none';
 
         const [{ data: addonStaff }, { data: addonRules }, { data: addonDeptData }] = await Promise.all([
@@ -282,7 +287,7 @@ export async function POST(req: Request) {
                 type: 'addon_share',
                 note: `Add-on: ${addonDeptName} ${noteExtra}`,
                 addon_department: addonDeptName,
-                addon_pct: `${addonPct}%`,
+                addon_pct: isManual ? 'Fixed' : `${addonPct}%`,
                 addon_pool: pool,
                 adjusted_pool: adjustedPool,
                 distribution_type: distType,

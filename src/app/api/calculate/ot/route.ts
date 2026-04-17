@@ -353,6 +353,7 @@ export async function POST(req: Request) {
           note: noteLines.join('\n'),
           type: 'ot_core',
           case_details: byRole,
+          raw_cases: data.case_breakdowns,
         },
       });
     }

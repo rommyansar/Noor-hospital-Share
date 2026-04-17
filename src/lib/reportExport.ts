@@ -45,6 +45,7 @@ interface StaffReportData {
   combined_working_amount?: number;
   ot_mode?: string;
   ot_group_count?: number;
+  raw_cases?: { case_type: string; role_type: string; amount: number; pct: number; mode: string; group_count: number; share: number }[];
   // Addon tracking
   addon_contributions?: {
     department: string; share: number; pct: string;
@@ -105,13 +106,22 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     const ruleWorkAmount = s.rule_entries.reduce((sum, r) => sum + r.income_amount, 0);
     const workAmount = totalWorkAmount > 0 ? totalWorkAmount : ruleWorkAmount;
 
-    // Build OT breakdown string for normal report
+    // Build OT breakdown string for normal report — case-by-case
     let otBreakdown = '';
     const parts: string[] = [];
-    if (hasOTData && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0)) {
+    const rawCases = (s as any).raw_cases || [];
+    if (hasOTData && rawCases.length > 0) {
+      for (const rc of rawCases) {
+        const effPct = rc.mode === 'group' && rc.group_count > 1
+          ? Math.round((rc.pct / rc.group_count) * 10000) / 10000
+          : rc.pct;
+        const effPctStr = effPct % 1 === 0 ? `${effPct}%` : `${parseFloat(effPct.toFixed(4))}%`;
+        parts.push(`[${rc.role_type}] ₹${rc.amount.toLocaleString('en-IN')} × ${effPctStr} = ₹${rc.share.toLocaleString('en-IN')}`);
+      }
+      parts.push(`= Total: ₹${s.total_share.toLocaleString('en-IN')}`);
+    } else if (hasOTData && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0)) {
       if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
       if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
-      if (s.ot_mode) parts.push(`${s.ot_mode}${(s.ot_group_count || 0) > 1 ? ` ÷${s.ot_group_count}` : ''}`);
     }
 
     const addonContribs = (s as any).addon_contributions || [];
@@ -273,14 +283,32 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       } else {
         // Standard rule-based or OT core + addon
         workingAmount = s.rule_entries.reduce((sum, r) => sum + r.income_amount, 0);
-        const pct = parseFloat(firstEntry.percentage || '0') || 0;
 
-        if (distType === 'group') {
-          const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
-          const count = firstEntry.present_count || 1;
-          calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n÷ ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+        // Check for raw_cases (case-by-case OT breakdown)
+        const rawCases = (s as any).raw_cases || [];
+        if (rawCases.length > 0) {
+          const caseParts: string[] = [];
+          for (const rc of rawCases) {
+            const effPct = rc.mode === 'group' && rc.group_count > 1
+              ? Math.round((rc.pct / rc.group_count) * 10000) / 10000
+              : rc.pct;
+            const effPctStr = effPct % 1 === 0 ? `${effPct}%` : `${parseFloat(effPct.toFixed(4))}%`;
+            caseParts.push(`[${rc.role_type}] ₹${rc.amount.toLocaleString('en-IN')} × ${effPctStr} = ₹${rc.share.toLocaleString('en-IN')}`);
+          }
+          // Compute OT core share (before addons)
+          const coreShare = rawCases.reduce((sum: number, rc: any) => sum + rc.share, 0);
+          caseParts.push(`= OT Total: ₹${Math.round(coreShare * 100 / 100).toLocaleString('en-IN')}`);
+          calculationBreakdown = caseParts.join('\n');
         } else {
-          calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+          // Fallback: old summary style
+          const pct = parseFloat(firstEntry.percentage || '0') || 0;
+          if (distType === 'group') {
+            const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
+            const count = firstEntry.present_count || 1;
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n÷ ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+          } else {
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+          }
         }
 
         // If has addon contributions, append them
@@ -290,11 +318,12 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
             const acParts: string[] = [];
             acParts.push(`\n[Add-on: ${ac.department}]`);
             if (isManualAc) {
-              acParts.push(`Manual: ₹${(ac.pool || 0).toLocaleString('en-IN')}`);
+              acParts.push(`Manual: ₹${(ac.base_amount || 0).toLocaleString('en-IN')}`);
             }
             if (ac.attendance !== 'none' && ac.total_days > 0) {
               acParts.push(`${ac.present_days}/${ac.total_days} days`);
             }
+            acParts.push(`× ${ac.pct}`);
             if (ac.distribution_type === 'group') {
               acParts.push(`÷ ${ac.present_count} staff`);
             }
@@ -306,15 +335,6 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         // If addon, prepend addon context
         if (isAddon && note && !hasAddon) {
           calculationBreakdown = `[${note}]\n→ ${calculationBreakdown}`;
-        }
-
-        // If OT Data exists, prepend it to calculationBreakdown
-        if ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0) {
-          const otParts: string[] = [];
-          if ((s.major_cases || 0) > 0) otParts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
-          if ((s.minor_cases || 0) > 0) otParts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
-          if (s.ot_mode) otParts.push(`${s.ot_mode}${(s.ot_group_count || 0) > 1 ? ` ÷${s.ot_group_count}` : ''}`);
-          calculationBreakdown = `${otParts.join('\n')}\n${calculationBreakdown}`;
         }
       }
     }

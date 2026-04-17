@@ -81,6 +81,7 @@ export async function GET(req: Request) {
         combined_working_amount: 0,
         ot_mode: '',
         ot_group_count: 0,
+        raw_cases: [],
         // Addon tracking
         addon_contributions: [] as { department: string; share: number; pct: string; attendance: string; note: string }[],
       };
@@ -103,6 +104,9 @@ export async function GET(req: Request) {
       staffTotals[r.staff_id].combined_working_amount = r.income_amount || 0;
       staffTotals[r.staff_id].ot_mode = breakdownObj.distribution || '';
       staffTotals[r.staff_id].ot_group_count = breakdownObj.presentInRole || 0;
+      if (breakdownObj.raw_cases) {
+        staffTotals[r.staff_id].raw_cases = breakdownObj.raw_cases;
+      }
       // Set origin to main dept for staff with core OT work
       staffTotals[r.staff_id].origin_department = mainDeptName;
     }

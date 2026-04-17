@@ -210,12 +210,10 @@ export async function POST(req: Request) {
           return { presentIncome, presentDays, absentDays };
         };
 
-        // 2) Collect available staff logic
-        const activeStaff = (addonStaff || []).filter((s: any) => {
-          const staffRole = s.role.toUpperCase().trim();
-          if (appliedRuleIds.length > 0 && !ruleMap[staffRole]) return false;
-          return true;
-        });
+        // 2) For OT addons, include ALL active staff from the addon department.
+        // The addon percentage is set on the addon config itself, NOT from department rules.
+        // Rule filtering only applies when specific applied_rules are selected AND staff role matches.
+        const activeStaff = (addonStaff || []).filter((s: any) => s.is_active !== false);
 
         const presentCount = activeStaff.length;
         if (presentCount === 0) continue;
@@ -370,14 +368,13 @@ export async function POST(req: Request) {
       .gte('date', startDate)
       .lt('date', endDate);
 
-    // Insert in chunks
+    // Insert all results as separate rows (core + addon entries per staff)
+    // Unique constraint on (staff_id, date, department_id) must be dropped
+    // to allow staff to have multiple entries (e.g., OT surgery share + addon share)
     const chunkSize = 500;
     for (let i = 0; i < allResults.length; i += chunkSize) {
       const chunk = allResults.slice(i, i + chunkSize);
-      const { error } = await supabase.from('daily_results').upsert(chunk, {
-        onConflict: 'staff_id,date,department_id',
-        ignoreDuplicates: false,
-      });
+      const { error } = await supabase.from('daily_results').insert(chunk);
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }

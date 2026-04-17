@@ -179,6 +179,13 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     if (hasAddon) {
       const addonPcts = addonContribs.map((ac: any) => normPct(ac.pct));
       finalPercentage = joinPcts([...corePcts, ...addonPcts]);
+    } else {
+      if (corePcts.length > 0) {
+        finalPercentage = joinPcts(corePcts);
+      }
+    }
+
+    if (hasAddon) {
 
       if (!hasCoreOT) {
         // Addon-only staff

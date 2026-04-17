@@ -302,7 +302,6 @@ export default function ReportsPage() {
                 <thead>
                   <tr>
                     <th>Staff</th>
-                    <th>Role</th>
                     <th style={{ textAlign: 'center' }}>Days</th>
                     <th style={{ textAlign: 'right' }}>Total Share</th>
                     <th style={{ width: '40px' }}></th>
@@ -318,20 +317,19 @@ export default function ReportsPage() {
                           <div
                             onClick={() => toggleExpand(s.staff_id)}
                             style={{
-                              display: 'grid', gridTemplateColumns: '2fr 1fr 80px 1fr 40px',
+                              display: 'grid', gridTemplateColumns: '3fr 80px 1fr 40px',
                               alignItems: 'center', padding: '12px 16px',
                               borderBottom: isExpanded ? '1px solid rgba(71, 85, 105, 0.15)' : 'none',
                             }}
                           >
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 600 }}>{s.staff_name}</span>
+                              <span style={{ fontWeight: 600 }}>{s.staff_name} <span className="badge badge-info" style={{ marginLeft: 8 }}>{s.role}</span></span>
                               {s.origin_department !== deptName && (
                                 <span style={{ fontSize: '10px', color: '#64748b' }}>
                                   from {s.origin_department}
                                 </span>
                               )}
                             </div>
-                            <span><span className="badge badge-info">{s.role}</span></span>
                             <span style={{ textAlign: 'center', color: '#94a3b8' }}>{s.days_present < 0 ? '-' : s.days_present}</span>
                             <span style={{ textAlign: 'right', fontWeight: 700, color: '#34d399', fontSize: '16px' }}>
                               ₹{s.total_share.toLocaleString()}

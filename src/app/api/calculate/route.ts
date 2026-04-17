@@ -413,10 +413,13 @@ export async function POST(req: Request) {
           if (distType === 'group') {
             presentCount = staffCountByRole[userRole] || 1;
             poolAmount = computePoolAmount(adjustedBase, pctStr);
-            share = Math.round((poolAmount / presentCount) * 100) / 100;
+            share = poolAmount / presentCount;
           } else {
-            share = Math.round(adjustedBase * (parsePercentage(pctStr) / 100) * 100) / 100;
+            share = adjustedBase * (parsePercentage(pctStr) / 100);
           }
+          
+          // Apply prorate ratio for monthly attendance
+          share = Math.round(share * prorateRatio * 100) / 100;
 
           newResults.push({
             staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
@@ -435,6 +438,7 @@ export async function POST(req: Request) {
               present_days: presentDays,
               absent_days: absentDays,
               prorate_ratio: applyProration ? `${presentDays}/${totalWorkingDays}` : undefined,
+              applied_ratio_multiplier: applyProration ? prorateRatio : 1,
             },
           });
           totalDistributed += share;
@@ -497,8 +501,11 @@ export async function POST(req: Request) {
             const explicitIds = new Set(dayData.present_staff_ids as string[]);
             presentAutoStaff = autoStaff.filter((s: any) => explicitIds.has(s.id));
           } else {
-            // No explicit list — use monthly auto selection, minus global leaves
-            const onLeaveSet = isAttNone ? new Set<string>() : (globalLeavesByDate[dateStr] || new Set<string>());
+            // No explicit list
+            // If 'daily', exclude absent staff (day-wise filtering). 
+            // If 'monthly' or 'none', include everyone here to keep group divisors static, then apply ratio later.
+            const isDailyAtt = dept.attendance_rule === 'daily';
+            const onLeaveSet = isDailyAtt ? (globalLeavesByDate[dateStr] || new Set<string>()) : new Set<string>();
             presentAutoStaff = autoStaff.filter((s: any) => !onLeaveSet.has(s.id));
           }
 
@@ -528,6 +535,17 @@ export async function POST(req: Request) {
               share = computeIndividualShare(dailyIncome, pctStr);
             }
 
+            // Apply Monthly Ratio if applicable
+            let absentDays = 0;
+            for (let d = 1; d <= daysInMonth; d++) {
+              const dStr = `${month}-${String(d).padStart(2, '0')}`;
+              if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
+            }
+            const presentDays = daysInMonth - absentDays;
+            const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
+            
+            share = Math.round(share * prorateRatio * 100) / 100;
+
             newResults.push({
               staff_id: staff.id, department_id: dept.id, date: dateStr,
               income_amount: dailyIncome, calculation_type: 'rule',
@@ -541,7 +559,9 @@ export async function POST(req: Request) {
                 presentInRole: presentCount,
                 gross_income: dailyIncome,
                 mode: 'auto',
-                note: `Auto staff: TDA/day × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} auto staff` : ''}`,
+                attendance_rule: dept.attendance_rule,
+                prorate_ratio: dept.attendance_rule === 'monthly' ? `${presentDays}/${daysInMonth}` : undefined,
+                note: `Auto staff: TDA/day × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} auto staff` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
               },
             });
             totalDistributed += share;
@@ -593,10 +613,21 @@ export async function POST(req: Request) {
             // RULE 3: Group count from MANUAL pool only
             presentCount = manualRoleCounts[userRole] || 1;
             poolAmount = computePoolAmount(manualAmount, pctStr);
-            share = Math.round((poolAmount / presentCount) * 100) / 100;
+            share = poolAmount / presentCount;
           } else {
-            share = Math.round(manualAmount * (parsePercentage(pctStr) / 100) * 100) / 100;
+            share = manualAmount * (parsePercentage(pctStr) / 100);
           }
+
+          // Apply Monthly Ratio if applicable (Manual staff is treated as a block)
+          let absentDays = 0;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dStr = `${month}-${String(d).padStart(2, '0')}`;
+            if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
+          }
+          const presentDays = daysInMonth - absentDays;
+          const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
+          
+          share = Math.round(share * prorateRatio * 100) / 100;
 
           newResults.push({
             staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
@@ -606,12 +637,12 @@ export async function POST(req: Request) {
             final_share: share,
             breakdown: {
               adjusted_base: manualAmount,
-              note: `Manual staff: ₹${manualAmount} × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} manual staff` : ''}`,
-              role: staff.role,
-              percentage: `${parsePercentage(pctStr)}%`,
               gross_income: manualAmount,
               dist_type: distType,
               mode: 'manual',
+              attendance_rule: dept.attendance_rule,
+              prorate_ratio: dept.attendance_rule === 'monthly' ? `${presentDays}/${daysInMonth}` : undefined,
+              note: `Manual staff: ₹${manualAmount} × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} manual staff` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
             },
           });
           totalDistributed += share;
@@ -635,8 +666,11 @@ export async function POST(req: Request) {
           const explicitIds = new Set(dayData.present_staff_ids as string[]);
           presentStaff = staffData.filter((s: any) => explicitIds.has(s.id));
         } else {
-          // No explicit list — fall back to global attendance
-          const onLeaveSet = dept.attendance_rule === 'none' ? new Set() : (globalLeavesByDate[dateStr] || new Set());
+          // No explicit list
+          // If 'daily', exclude absent staff (day-wise filtering). 
+          // If 'monthly' or 'none', include everyone here to keep group divisors static, then apply ratio later.
+          const isDailyAtt = dept.attendance_rule === 'daily';
+          const onLeaveSet = isDailyAtt ? (globalLeavesByDate[dateStr] || new Set()) : new Set();
           presentStaff = staffData.filter((s: any) => !onLeaveSet.has(s.id));
         }
 
@@ -698,6 +732,17 @@ export async function POST(req: Request) {
             share = computeIndividualShare(adjustedIncome, pctStr);
           }
 
+          // Apply Monthly Ratio if applicable
+          let absentDays = 0;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dStr = `${month}-${String(d).padStart(2, '0')}`;
+            if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
+          }
+          const presentDays = daysInMonth - absentDays;
+          const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
+          
+          share = Math.round(share * prorateRatio * 100) / 100;
+
           newResults.push({
             staff_id: staff.id, department_id: dept.id, date: dateStr,
             income_amount: income, calculation_type: 'rule',
@@ -711,6 +756,9 @@ export async function POST(req: Request) {
               presentInRole: presentCount,
               gross_income: income,
               manual_deductions: manualDeductions,
+              attendance_rule: dept.attendance_rule,
+              prorate_ratio: dept.attendance_rule === 'monthly' ? `${presentDays}/${daysInMonth}` : undefined,
+              note: `Generic computation${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
             },
           });
           totalDistributed += share;

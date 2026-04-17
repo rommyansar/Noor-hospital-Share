@@ -68,7 +68,6 @@ const MONTHS = [
 interface NormalRow {
   srNo: number;
   staffName: string;
-  role: string;
   workAmount: number;
   percentage: string;
   shareAmount: number;
@@ -112,7 +111,6 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       staffName: s.origin_department !== data.department_name 
         ? `${s.staff_name} (${s.origin_department})` 
         : s.staff_name,
-      role: s.role,
       workAmount: Math.round(workAmount * 100) / 100,
       percentage: displayPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
@@ -286,11 +284,11 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     const rows = buildNormalRows(data);
     const hasOTData = rows.some(r => r.otBreakdown);
     const tableHeader = hasOTData
-      ? ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'OT Breakdown', 'Share Amount (Rs.)']
-      : ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
+      ? ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'OT Breakdown', 'Share Amount (Rs.)']
+      : ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
     const tableRows = rows.map(r => hasOTData
-      ? [r.srNo, r.staffName, r.role, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]
-      : [r.srNo, r.staffName, r.role, r.workAmount, r.percentage, r.shareAmount]
+      ? [r.srNo, r.staffName, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]
+      : [r.srNo, r.staffName, r.workAmount, r.percentage, r.shareAmount]
     );
 
     sheetData = [
@@ -301,7 +299,7 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   } else {
     const rows = buildDetailedComprehensiveRows(data);
     const tableHeader = [
-      'Sr.', 'Staff Name', 'Role', 'Department',
+      'Sr.', 'Staff Name', 'Department',
       'Total Days', 'Off/CL', 'Working Days',
       'Working Amount (Rs.)', 'Percentage',
       'Distribution', 'Group Count',
@@ -311,7 +309,6 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     const tableRows = rows.map(r => [
       r.srNo,
       r.staffName,
-      r.role,
       r.origin,
       r.totalDays,
       r.offCLDays,
@@ -339,17 +336,15 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     ws['!cols'] = hasOTData
       ? [
           { wch: 8 },   // Sr. No.
-          { wch: 28 },  // Staff Name
-          { wch: 18 },  // Role
+          { wch: 30 },  // Staff Name
           { wch: 18 },  // Work Amount
           { wch: 15 },  // Percentage
-          { wch: 45 },  // OT Breakdown
+          { wch: 60 },  // OT Breakdown
           { wch: 18 },  // Share Amount
         ]
       : [
           { wch: 8 },   // Sr. No.
-          { wch: 28 },  // Staff Name
-          { wch: 18 },  // Role
+          { wch: 40 },  // Staff Name
           { wch: 18 },  // Work Amount
           { wch: 15 },  // Percentage
           { wch: 18 },  // Share Amount
@@ -357,9 +352,8 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   } else {
     ws['!cols'] = [
       { wch: 5 },   // Sr.
-      { wch: 22 },  // Staff Name
-      { wch: 14 },  // Role
-      { wch: 16 },  // Department
+      { wch: 25 },  // Staff Name
+      { wch: 18 },  // Department
       { wch: 10 },  // Total Days
       { wch: 8 },   // Off/CL
       { wch: 12 },  // Working Days
@@ -367,7 +361,7 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
       { wch: 10 },  // Percentage
       { wch: 12 },  // Distribution
       { wch: 10 },  // Group Count
-      { wch: 60 },  // Calculation Breakdown
+      { wch: 70 },  // Calculation Breakdown
       { wch: 16 },  // Final Share
     ];
   }
@@ -462,31 +456,29 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const hasOTData = rows.some(r => r.otBreakdown);
 
     const headCols = hasOTData
-      ? ['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', '%', 'OT Breakdown', 'Share Amount (Rs.)']
-      : ['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)'];
+      ? ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'OT Breakdown', 'Share Amount (Rs.)']
+      : ['Sr.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)'];
 
     const bodyRows = rows.map(r => hasOTData
-      ? [r.srNo, r.staffName, r.role, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]
-      : [r.srNo, r.staffName, r.role, formatCurrency(r.workAmount), r.percentage, formatCurrency(r.shareAmount)]
+      ? [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]
+      : [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, formatCurrency(r.shareAmount)]
     );
 
     const colStyles: Record<number, any> = hasOTData
       ? {
-          0: { halign: 'center', cellWidth: 12 },
-          1: { halign: 'left', cellWidth: 35 },
-          2: { halign: 'center', cellWidth: 25 },
-          3: { halign: 'right', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 15 },
-          5: { halign: 'left', cellWidth: 50 },
-          6: { halign: 'right', cellWidth: 25 },
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'left', cellWidth: 40 },
+          2: { halign: 'right', cellWidth: 25 },
+          3: { halign: 'center', cellWidth: 15 },
+          4: { halign: 'left', cellWidth: 65 },
+          5: { halign: 'right', cellWidth: 25 },
         }
       : {
           0: { halign: 'center', cellWidth: 15 },
-          1: { halign: 'left', cellWidth: 45 },
-          2: { halign: 'center', cellWidth: 30 },
-          3: { halign: 'right', cellWidth: 30 },
-          4: { halign: 'center', cellWidth: 25 },
-          5: { halign: 'right', cellWidth: 30 },
+          1: { halign: 'left', cellWidth: 55 },
+          2: { halign: 'right', cellWidth: 35 },
+          3: { halign: 'center', cellWidth: 35 },
+          4: { halign: 'right', cellWidth: 40 },
         };
 
     autoTable(doc, {

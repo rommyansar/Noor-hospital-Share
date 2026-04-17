@@ -298,6 +298,7 @@ export async function POST(req: Request) {
     const coreResults: any[] = [];
     for (const [staffId, data] of Object.entries(staffShares)) {
       const staff = staffMap[staffId];
+      if (!staff) continue; // Skip orphaned/deleted staff directly
 
       // Build detailed per-case-type note
       // Group breakdowns by role_type for a clean summary

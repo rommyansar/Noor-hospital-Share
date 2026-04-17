@@ -788,7 +788,7 @@ export default function OTEntryPage() {
           <div className="mb-10">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2"><Settings className="text-indigo-400" /> Add-On Departments</h2>
-              <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [] } as any])} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-2">
+              <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [], amount_source: 'TDA', manual_amount: '' } as any])} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-2">
                 <Plus size={14} /> Add Dept Add-On
               </button>
             </div>
@@ -832,10 +832,69 @@ export default function OTEntryPage() {
                             setAddons(next);
                           }} className="select-field" style={{ minHeight: '44px' }}>
                             <option value="none">No Attendance Impact</option>
-                            <option value="monthly">Monthly Attendance (Read Only)</option>
-                            <option value="daily">Daily Attendance (Read Only)</option>
+                            <option value="monthly">Monthly Attendance</option>
+                            <option value="daily">Daily Attendance</option>
                           </select>
                         </div>
+                      </div>
+
+                      {/* Row: Amount Source Override */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 border border-slate-700 bg-slate-900/30 rounded-lg">
+                        <div>
+                          <label className="field-label mb-2 block">Amount Source</label>
+                          <div className="flex gap-2">
+                            <button
+                              className="flex-1 py-2 px-3 rounded text-xs font-semibold transition-all border"
+                              style={{
+                                background: (addon.amount_source || 'TDA') === 'TDA' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(15, 23, 42, 0.5)',
+                                color: (addon.amount_source || 'TDA') === 'TDA' ? '#60a5fa' : '#64748b',
+                                borderColor: (addon.amount_source || 'TDA') === 'TDA' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(71, 85, 105, 0.3)'
+                              }}
+                              onClick={() => {
+                                const next = [...addons];
+                                next[aIdx] = { ...next[aIdx], amount_source: 'TDA' };
+                                setAddons(next);
+                              }}
+                            >
+                              Follow Main Dept TDA
+                            </button>
+                            <button
+                              className="flex-1 py-2 px-3 rounded text-xs font-semibold transition-all border"
+                              style={{
+                                background: addon.amount_source === 'MANUAL' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(15, 23, 42, 0.5)',
+                                color: addon.amount_source === 'MANUAL' ? '#10b981' : '#64748b',
+                                borderColor: addon.amount_source === 'MANUAL' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(71, 85, 105, 0.3)'
+                              }}
+                              onClick={() => {
+                                const next = [...addons];
+                                next[aIdx] = { ...next[aIdx], amount_source: 'MANUAL' };
+                                setAddons(next);
+                              }}
+                            >
+                              Fixed Manual Amount
+                            </button>
+                          </div>
+                        </div>
+                        {addon.amount_source === 'MANUAL' && (
+                          <div>
+                            <label className="field-label mb-2 block">Manual Amount Value</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">₹</span>
+                              <input
+                                type="number"
+                                className="text-input pl-8"
+                                style={{ minHeight: '38px', width: '100%' }}
+                                value={addon.manual_amount !== undefined && addon.manual_amount !== null ? addon.manual_amount : ''}
+                                onChange={(e) => {
+                                  const next = [...addons];
+                                  next[aIdx] = { ...next[aIdx], manual_amount: e.target.value };
+                                  setAddons(next);
+                                }}
+                                placeholder="Enter specific pool base amount"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       {addon.addon_department_id && (
                         <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">

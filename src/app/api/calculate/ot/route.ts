@@ -156,7 +156,8 @@ export async function POST(req: Request) {
         if (!addon.addon_department_id || (parseFloat(addon.percentage) || 0) <= 0) continue;
 
         const addonPct = parseFloat(addon.percentage) || 0;
-        const pool = Math.round(totalOTIncome * (addonPct / 100) * 100) / 100;
+        const baseIncome = addon.amount_source === 'MANUAL' ? (parseFloat(addon.manual_amount) || 0) : totalOTIncome;
+        const pool = Math.round(baseIncome * (addonPct / 100) * 100) / 100;
         const attRule = addon.attendance_rule || 'none';
 
         const [{ data: addonStaff }, { data: addonRules }, { data: addonDeptData }] = await Promise.all([
@@ -241,11 +242,18 @@ export async function POST(req: Request) {
             const dailyData = getDailyPresentIncome(staff.id);
             presentDays = dailyData.presentDays;
             absentDays = dailyData.absentDays;
-            // Pool based on present-day income only, not total OT income
-            adjustedPool = totalOTIncome > 0
-              ? Math.round(pool * (dailyData.presentIncome / totalOTIncome) * 100) / 100
-              : 0;
-            noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
+            
+            if (addon.amount_source === 'MANUAL') {
+               // Pool based on present-day ratio since manual sum is static
+               adjustedPool = daysInMonth > 0 ? Math.round(pool * (presentDays / daysInMonth) * 100) / 100 : 0;
+               noteExtra = `(Daily Fixed: ${presentDays}/${daysInMonth} days)`;
+            } else {
+               // Pool based on present-day income only, not total OT income
+               adjustedPool = totalOTIncome > 0
+                 ? Math.round(pool * (dailyData.presentIncome / totalOTIncome) * 100) / 100
+                 : 0;
+               noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
+            }
           }
 
           let share = distType === 'group'

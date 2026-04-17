@@ -66,7 +66,9 @@ export async function POST(request: Request) {
         percentage: parseFloat(a.percentage) || 0,
         calculation_type: a.calculation_type || 'individual',
         attendance_rule: a.attendance_rule || 'none',
-        applied_rules: a.applied_rules || []
+        applied_rules: a.applied_rules || [],
+        amount_source: a.amount_source || 'TDA',
+        manual_amount: a.manual_amount || null
       }));
 
       const { error: insertError } = await supabase

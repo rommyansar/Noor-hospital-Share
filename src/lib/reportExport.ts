@@ -103,7 +103,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
       if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
       if (s.ot_mode) parts.push(`${s.ot_mode}${(s.ot_group_count || 0) > 1 ? ` ÷${s.ot_group_count}` : ''}`);
-      otBreakdown = parts.join(' | ');
+      otBreakdown = parts.join('\n');
     }
 
     return {
@@ -216,6 +216,15 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       // If addon, prepend addon context
       if (isAddon && note) {
         calculationBreakdown = `[${note}]\n→ ${calculationBreakdown}`;
+      }
+
+      // If OT Data exists, append it to calculationBreakdown
+      if ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0) {
+        const parts: string[] = [];
+        if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
+        if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
+        if (s.ot_mode) parts.push(`${s.ot_mode}${(s.ot_group_count || 0) > 1 ? ` ÷${s.ot_group_count}` : ''}`);
+        calculationBreakdown = `${parts.join('\n')}\n${calculationBreakdown}`;
       }
     }
 
@@ -486,6 +495,9 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       head: [headCols],
       body: bodyRows,
       theme: 'grid',
+      styles: {
+        overflow: 'linebreak',
+      },
       headStyles: {
         fillColor: [16, 185, 129],
         textColor: [255, 255, 255],
@@ -521,7 +533,6 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const headCols = [
       'Sr.',
       'Staff Name',
-      'Role',
       'Total\nDays',
       'Off/CL\nTaken',
       'Working\nDays',
@@ -536,7 +547,6 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const mapRow = (r: DetailedComprehensiveRow) => [
       r.srNo,
       r.staffName,
-      r.role,
       r.totalDays,
       r.offCLDays,
       r.workingDays,
@@ -551,17 +561,16 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     // Available width in landscape legal: ~356 - 24 (margins) = 332mm
     const colStyles: Record<number, any> = {
       0:  { halign: 'center', cellWidth: 10 },    // Sr.
-      1:  { halign: 'left' },                     // Staff Name
-      2:  { halign: 'center' },                   // Role
-      3:  { halign: 'center' },                   // Total Days
-      4:  { halign: 'center' },                   // Off/CL
-      5:  { halign: 'center' },                   // Working Days
-      6:  { halign: 'right' },                    // Working Amount
-      7:  { halign: 'center' },                   // %
-      8:  { halign: 'center' },                   // Distribution
-      9:  { halign: 'center' },                   // Group Count
-      10: { halign: 'left' },                     // Calculation
-      11: { halign: 'right' },                    // Final Share
+      1:  { halign: 'left', cellWidth: 35 },      // Staff Name
+      2:  { halign: 'center', cellWidth: 15 },    // Total Days
+      3:  { halign: 'center', cellWidth: 15 },    // Off/CL
+      4:  { halign: 'center', cellWidth: 15 },    // Working Days
+      5:  { halign: 'right', cellWidth: 30 },     // Working Amount
+      6:  { halign: 'center', cellWidth: 15 },    // %
+      7:  { halign: 'center', cellWidth: 20 },    // Distribution
+      8:  { halign: 'center', cellWidth: 15 },    // Group Count
+      9:  { halign: 'left', cellWidth: 130 },     // Calculation Breakdown
+      10: { halign: 'right', cellWidth: 32 },     // Final Share
     };
 
     // Helper to render a section with a section header
@@ -595,9 +604,9 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         head: [headCols],
         body: sectionRows.map(mapRow),
         foot: [[
-          { content: '', colSpan: 6 },
-          { content: 'Section Total:', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
-          { content: `Rs. ${formatCurrencyShort(sectionRows.reduce((s, r) => s + r.finalShare, 0))}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
+          { content: '', colSpan: 5 },
+          { content: 'Section Total:', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
+          { content: `Rs. ${formatCurrencyShort(sectionRows.reduce((s, r) => s + r.finalShare, 0))}`, colSpan: 2, styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } },
         ]],
         theme: 'grid',
         styles: {

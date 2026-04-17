@@ -28,12 +28,13 @@ export async function GET(req: Request) {
   const endDate = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 
   // Fetch department name, monthly total, income data, and work entries ALL in parallel
-  // (was 4 sequential round-trips → now 1 concurrent batch)
-  const [deptRes, deptTotalRes, incomeRes, workEntriesRes] = await Promise.all([
+  const [deptRes, deptTotalRes, incomeRes, workEntriesRes, otCasesRes] = await Promise.all([
     supabase.from('departments').select('name').eq('id', deptId).single(),
     supabase.from('department_monthly_totals').select('total_amount').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
     supabase.from('daily_income').select('amount').eq('department_id', deptId).gte('date', startDate).lt('date', endDate),
     supabase.from('staff_work_entries').select('*').eq('department_id', deptId).gte('date', startDate).lt('date', endDate).order('date'),
+    // Also check if this dept has OT cases (for income calculation)
+    supabase.from('ot_cases').select('amount').eq('department_id', deptId).eq('month', monthStr),
   ]);
 
   const mainDeptName = deptRes.data?.name || 'Unknown';
@@ -155,10 +156,17 @@ export async function GET(req: Request) {
     return b.total_share - a.total_share;
   });
 
-  // Compute total income from pre-fetched data
-  let totalIncome = Number(deptTotalRes.data?.total_amount) || 0;
-  if (totalIncome <= 0) {
-    totalIncome = (incomeRes.data || []).reduce((s: number, d: any) => s + (d.amount || 0), 0);
+  // Compute total income
+  // If department has OT cases, use OT income. Otherwise use monthly total / daily income.
+  const otIncome = (otCasesRes.data || []).reduce((s: number, c: any) => s + (parseFloat(c.amount) || 0), 0);
+  let totalIncome = 0;
+  if (otIncome > 0) {
+    totalIncome = otIncome;
+  } else {
+    totalIncome = Number(deptTotalRes.data?.total_amount) || 0;
+    if (totalIncome <= 0) {
+      totalIncome = (incomeRes.data || []).reduce((s: number, d: any) => s + (d.amount || 0), 0);
+    }
   }
 
   const totalDistributed = aggregated.reduce((s: number, a: any) => s + a.total_share, 0);

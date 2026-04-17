@@ -46,6 +46,8 @@ interface ReportData {
   staff: StaffReport[];
 }
 
+const OT_DEPT_NAMES = ['delivery', 'general surgery'];
+
 export default function ReportsPage() {
   const { addToast } = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -62,8 +64,9 @@ export default function ReportsPage() {
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
     const data = await res.json();
-    setDepartments(data.filter((d: Department) => d.is_active));
-    if (data.length > 0 && !selectedDept) setSelectedDept(data[0].id);
+    const active = data.filter((d: Department) => d.is_active);
+    setDepartments(active);
+    if (active.length > 0 && !selectedDept) setSelectedDept(active[0].id);
   };
 
   useEffect(() => { fetchDepartments(); }, []);
@@ -95,7 +98,10 @@ export default function ReportsPage() {
     });
   };
 
-  const deptName = departments.find((d) => d.id === selectedDept)?.name || '';
+  // Check if selected dept is an OT department (Delivery / General Surgery)
+  const selectedDeptObj = departments.find(d => d.id === selectedDept);
+  const isOTDept = selectedDeptObj ? OT_DEPT_NAMES.includes(selectedDeptObj.name.toLowerCase().trim()) : false;
+  const deptName = selectedDeptObj?.name || '';
 
   // Build export data
   const getExportData = (): ReportExportData | null => {
@@ -151,23 +157,37 @@ export default function ReportsPage() {
     const monthStr = `${year}-${String(month).padStart(2, '0')}`;
     
     try {
-      const payload = {
-        month: monthStr,
-        department_id: type === 'department' ? selectedDept : 'all'
-      };
-
-      const res = await fetch('/api/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      
-      if (res.ok) {
-        addToast('success', `${type === 'department' ? deptName : 'Overall'} calculation complete!`);
-        fetchReport();
+      if (isOTDept && type === 'department') {
+        // Use OT calculation for Delivery / General Surgery
+        const res = await fetch('/api/calculate/ot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month: monthStr, department_id: selectedDept })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          addToast('success', `${deptName} OT calculation complete!`);
+          fetchReport();
+        } else {
+          addToast('error', data.error || 'Failed to calculate');
+        }
       } else {
-        addToast('error', data.error || 'Failed to calculate');
+        const payload = {
+          month: monthStr,
+          department_id: type === 'department' ? selectedDept : 'all'
+        };
+        const res = await fetch('/api/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          addToast('success', `${type === 'department' ? deptName : 'Overall'} calculation complete!`);
+          fetchReport();
+        } else {
+          addToast('error', data.error || 'Failed to calculate');
+        }
       }
     } catch (err) {
       addToast('error', 'An error occurred during calculation');

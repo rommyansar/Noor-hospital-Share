@@ -353,7 +353,8 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   const sheetName = type === 'normal' ? 'Normal Report' : 'Detailed Report';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-  const fileName = `${data.department_name}_${MONTHS[data.month - 1]}_${data.year}_${type}_report.xlsx`;
+  const safeDeptName = data.department_name.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+  const fileName = `${safeDeptName}_${MONTHS[data.month - 1]}_${data.year}_${type}_report.xlsx`;
   XLSX.writeFile(wb, fileName);
 }
 
@@ -696,6 +697,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   doc.setTextColor(0, 0, 0);
 
   // Save
-  const fileName = `${data.department_name}_${MONTHS[data.month - 1]}_${data.year}_${type}_report.pdf`;
+  const safeDeptName = data.department_name.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+  const fileName = `${safeDeptName}_${MONTHS[data.month - 1]}_${data.year}_${type}_report.pdf`;
   doc.save(fileName);
 }

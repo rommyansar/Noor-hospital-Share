@@ -78,7 +78,7 @@ const MONTHS = [
 interface NormalRow {
   srNo: number;
   staffName: string;
-  workAmount: number;
+  workAmount: number | string;
   percentage: string;
   shareAmount: number;
   otBreakdown: string;
@@ -95,11 +95,11 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     // If there are work entries, calculate combined percentage from actual data
     let displayPercentage = '';
     if (s.work_entries.length > 0) {
-      const uniquePcts = [...new Set(s.work_entries.map(w => w.percentage))];
-      displayPercentage = uniquePcts.length === 1 ? `${uniquePcts[0]}%` : 'Mixed';
+      const pcts = [...new Set(s.work_entries.map(w => w.percentage ? (w.percentage.includes('%') ? w.percentage : `${w.percentage}%`) : ''))].filter(Boolean);
+      displayPercentage = pcts.join(', ');
     } else if (s.rule_entries.length > 0) {
-      const uniquePcts = [...new Set(s.rule_entries.map(r => r.percentage))];
-      displayPercentage = uniquePcts.length === 1 ? `${uniquePcts[0]}%` : `${uniquePcts[0]}%`;
+      const pcts = [...new Set(s.rule_entries.map(r => r.percentage ? (r.percentage.includes('%') ? r.percentage : `${r.percentage}%`) : ''))].filter(Boolean);
+      displayPercentage = pcts.join(', ');
     }
 
     // For rule-based staff, sum income amounts as "work amount"
@@ -110,7 +110,11 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     let otBreakdown = '';
     const parts: string[] = [];
     const rawCases = (s as any).raw_cases || [];
+    
+    // Extracted percentages for OT Core
+    let corePcts: string[] = [];
     if (hasOTData && rawCases.length > 0) {
+      corePcts = [...new Set(rawCases.map((rc: any) => rc.pct % 1 === 0 ? `${rc.pct}%` : `${parseFloat(rc.pct.toFixed(4))}%`))];
       const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
       for (const rc of rawCases) {
         const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
@@ -144,20 +148,33 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
 
     const addonContribs = (s as any).addon_contributions || [];
     const hasAddon = addonContribs.length > 0;
-    const hasCoreOT = (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
+    const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
     
-    let finalWorkAmount = workAmount;
+    let finalWorkAmount: number | string = workAmount;
     let finalPercentage = displayPercentage;
 
     if (hasAddon) {
+      const addonPcts = addonContribs.map((ac: any) => ac.pct);
+      const combinedPcts = [...new Set([...corePcts, ...addonPcts])].filter(Boolean);
+      finalPercentage = combinedPcts.join(', ');
+
       if (!hasCoreOT) {
-        // Addon-only staff: override workAmount and percentage for the normal report
-        const ac = addonContribs[0];
-        finalWorkAmount = ac.amount_source === 'MANUAL' ? ac.base_amount || 0 : ac.pool || 0;
-        finalPercentage = ac.pct;
+        // Addon-only staff
+        const firstAc = addonContribs[0];
+        finalWorkAmount = firstAc.amount_source === 'MANUAL' ? (firstAc.adjusted_base || firstAc.base_amount || 0) : (firstAc.pool || 0);
+      } else {
+        // Mixed staff - generate separated values "50/-  25/-"
+        const coreWorkAmt = rawCases.length > 0 ? rawCases.reduce((sum: number, rc: any) => sum + rc.amount, 0) : workAmount;
+        const addonAmts = addonContribs.map((ac: any) => ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount || 0) : (ac.pool || 0));
+        
+        const coreStr = `${Math.round(coreWorkAmt).toLocaleString('en-IN')}/-`;
+        const addonStrs = addonAmts.map((a: number) => `${Math.round(a).toLocaleString('en-IN')}/-`);
+        finalWorkAmount = [coreStr, ...addonStrs].join('\n');
       }
+
       for (const ac of addonContribs) {
-         const acAmt = (ac.amount_source === 'MANUAL' ? ac.base_amount : ac.pool) || 0;
+         // Use adjusted_base for manual amount so the math works: adjusted_base x pct = pool
+         const acAmt = (ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount) : ac.pool) || 0;
          const acPctStr = ac.pct;
          const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
          
@@ -173,7 +190,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     return {
       srNo: idx + 1,
       staffName: s.staff_name,
-      workAmount: Math.round(finalWorkAmount * 100) / 100,
+      workAmount: typeof finalWorkAmount === 'number' ? Math.round(finalWorkAmount * 100) / 100 : finalWorkAmount,
       percentage: finalPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
       otBreakdown,
@@ -192,7 +209,7 @@ interface DetailedComprehensiveRow {
   offCLDays: number | string;
   workingDays: number | string;
   deptIncome: number;
-  workingAmount: number;
+  workingAmount: number | string;
   percentage: string;
   distributionType: string;
   groupCount: number | string;
@@ -230,14 +247,14 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
     let distributionType = '';
     let groupCount: number | string = '-';
     let deptIncome = data.total_income;
-    let workingAmount = 0;
+    let workingAmount: number | string = 0;
     let calculationBreakdown = '';
 
     if (s.work_entries.length > 0) {
       // Work-entry based staff
       const totalWorkAmt = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
-      const uniquePcts = [...new Set(s.work_entries.map(w => w.percentage))];
-      displayPercentage = uniquePcts.length === 1 ? `${uniquePcts[0]}%` : 'Mixed';
+      const pcts = [...new Set(s.work_entries.map(w => w.percentage ? (w.percentage.includes('%') ? w.percentage : `${w.percentage}%`) : ''))].filter(Boolean);
+      displayPercentage = pcts.join(', ');
       distributionType = 'Work Entry';
       workingAmount = totalWorkAmt;
 
@@ -250,8 +267,8 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
     } else if (s.rule_entries.length > 0) {
       // Rule-based staff
       const firstEntry = s.rule_entries[0];
-      const uniquePcts = [...new Set(s.rule_entries.map(r => r.percentage))];
-      displayPercentage = uniquePcts.length === 1 ? `${uniquePcts[0]}%` : `${uniquePcts[0]}%`;
+      const pcts = [...new Set(s.rule_entries.map(r => r.percentage ? (r.percentage.includes('%') ? r.percentage : `${r.percentage}%`) : ''))].filter(Boolean);
+      displayPercentage = pcts.join(', ');
       
       const distType = firstEntry.distribution_type || 'individual';
       distributionType = distType === 'group' ? 'Group' : 'Individual';
@@ -263,7 +280,8 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       // Check if this is an addon-only staff (no OT core work)
       const addonContribs = (s as any).addon_contributions || [];
       const hasAddon = addonContribs.length > 0;
-      const hasCoreOT = (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
+      const rawCases = (s as any).raw_cases || [];
+      const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
 
       if (hasAddon && !hasCoreOT) {
         // ADDON-ONLY staff: show addon calculation breakdown
@@ -352,15 +370,28 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         // If has addon contributions, append them
         if (hasAddon) {
           for (const ac of addonContribs) {
-            const acAmt = (ac.amount_source === 'MANUAL' ? ac.base_amount : ac.pool) || 0;
+            const isManualAc = ac.amount_source === 'MANUAL';
+            const acParts: string[] = [];
+            acParts.push(`\n[Add-on: ${ac.department}]`);
+            if (isManualAc) {
+              acParts.push(`Manual Amount: Rs. ${(ac.base_amount || 0).toLocaleString('en-IN')}`);
+            } else {
+              acParts.push(`Department TDA: Rs. ${(ac.base_amount || 0).toLocaleString('en-IN')}`);
+            }
+            if (ac.attendance !== 'none' && ac.total_days > 0) {
+              acParts.push(`Attendance: ${ac.present_days}/${ac.total_days} days (${ac.absent_days} off)`);
+              acParts.push(`Adjusted Base: Rs. ${(ac.adjusted_base || 0).toLocaleString('en-IN')}`);
+            }
+            
             const acPctStr = ac.pct;
             const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
             
             if (ac.distribution_type === 'group' && ac.present_count > 1) {
-              calculationBreakdown += `\nRs. ${acAmt.toLocaleString('en-IN')} x ${acPctStr} = Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Rs. ${acShareStr}`;
+              acParts.push(`x ${acPctStr} = Pool: Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Final Share: Rs. ${acShareStr}`);
             } else {
-              calculationBreakdown += `\n${acPctStr} -> Rs. ${acAmt.toLocaleString('en-IN')} = Rs. ${acShareStr}`;
+              acParts.push(`x ${acPctStr} = Final Share: Rs. ${acShareStr}`);
             }
+            calculationBreakdown += acParts.join('\n');
           }
         }
 
@@ -368,6 +399,40 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         if (isAddon && note && !hasAddon) {
           calculationBreakdown = `[${note}]\n-> ${calculationBreakdown}`;
         }
+      }
+    }
+
+    let finalWorkingAmount: number | string = workingAmount;
+    let finalPercentage = displayPercentage;
+
+    let corePcts: string[] = [];
+    const rawCases = (s as any).raw_cases || [];
+    if (rawCases.length > 0) {
+      corePcts = [...new Set(rawCases.map((rc: any) => rc.pct % 1 === 0 ? `${rc.pct}%` : `${parseFloat(rc.pct.toFixed(4))}%`))];
+    }
+
+    if (hasAddon) {
+      const addonPcts = addonContribs.map((ac: any) => ac.pct);
+      const combinedPcts = [...new Set([...corePcts, ...addonPcts])].filter(Boolean);
+      finalPercentage = combinedPcts.join(', ');
+
+      if (!hasCoreOT) {
+        // Addon-only staff
+        const firstAc = addonContribs[0];
+        finalWorkingAmount = firstAc.amount_source === 'MANUAL' ? (firstAc.adjusted_base || firstAc.base_amount || 0) : (firstAc.pool || 0);
+      } else {
+        // Mixed staff
+        const coreAmt = rawCases.length > 0 ? rawCases.reduce((sum: number, rc: any) => sum + rc.amount, 0) : workingAmount;
+        const addonAmts = addonContribs.map((ac: any) => ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount || 0) : (ac.pool || 0));
+        
+        const coreStr = `${Math.round(coreAmt).toLocaleString('en-IN')}/-`;
+        const addonStrs = addonAmts.map((a: number) => `${Math.round(a).toLocaleString('en-IN')}/-`);
+        finalWorkingAmount = [coreStr, ...addonStrs].join('\n');
+      }
+    } else {
+      // Non-addon mixed/core OT
+      if (corePcts.length > 0) {
+        finalPercentage = corePcts.join(', ');
       }
     }
 
@@ -380,8 +445,8 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       offCLDays,
       workingDays,
       deptIncome,
-      workingAmount: Math.round(workingAmount * 100) / 100,
-      percentage: displayPercentage,
+      workingAmount: typeof finalWorkingAmount === 'number' ? Math.round(finalWorkingAmount * 100) / 100 : finalWorkingAmount,
+      percentage: finalPercentage,
       distributionType,
       groupCount,
       calculationBreakdown,
@@ -404,13 +469,15 @@ function getMonthYear(data: ReportExportData): string {
   return `${MONTHS[data.month - 1]} ${data.year}`;
 }
 
-function formatCurrency(val: number): string {
+function formatCurrency(val: number | string): string {
+  if (typeof val === 'string') return val;
   const formatted = val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, '');
-  return `Rs. ${formatted}`;
+  return `${formatted}/-`;
 }
 
-function formatCurrencyShort(val: number): string {
-  return val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, '');
+function formatCurrencyShort(val: number | string): string {
+  if (typeof val === 'string') return val;
+  return `${val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, '')}/-`;
 }
 
 // ── Excel Export ────────────────────────────────

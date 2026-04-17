@@ -158,11 +158,11 @@ export async function POST(req: Request) {
         const addonPct = parseFloat(addon.percentage) || 0;
 
         if (!addon.addon_department_id) continue;
-        if (!isManual && addonPct <= 0) continue;
+        if (addonPct <= 0) continue; // Percentage is ALWAYS required
         if (isManual && rawManual <= 0) continue;
 
-        // If Manual Amount is used, that is the exact pool. Percentage is ignored.
-        const pool = isManual ? rawManual : Math.round(totalOTIncome * (addonPct / 100) * 100) / 100;
+        // Step 1: Base amount (Manual Amount or Total OT Income)
+        const baseAmount = isManual ? rawManual : totalOTIncome;
         const attRule = addon.attendance_rule || 'none';
 
         const [{ data: addonStaff }, { data: addonRules }, { data: addonDeptData }] = await Promise.all([
@@ -206,7 +206,6 @@ export async function POST(req: Request) {
             const dayIncome = otIncomeByDate[dateStr] || 0;
             if (globalLeavesByDate[dateStr]?.has(staffId)) {
               absentDays++;
-              // Skip this day's income — staff was absent
             } else {
               presentDays++;
               presentIncome += dayIncome;
@@ -215,81 +214,77 @@ export async function POST(req: Request) {
           return { presentIncome, presentDays, absentDays };
         };
 
-        // 2) For OT addons, include ALL active staff from the addon department.
-        // The addon percentage is set on the addon config itself, NOT from department rules.
-        // Rule filtering only applies when specific applied_rules are selected AND staff role matches.
+        // Include ALL active staff from the addon department
         const activeStaff = (addonStaff || []).filter((s: any) => s.is_active !== false);
-
-        const presentCount = activeStaff.length;
-        if (presentCount === 0) continue;
+        const staffCount = activeStaff.length;
+        if (staffCount === 0) continue;
 
         let distType = addon.calculation_type || 'individual';
 
         for (const staff of activeStaff) {
-          // Rule requirement removed globally because activeStaff is pre-filtered by appliedRuleIds above.
-          let adjustedPool = pool;
+          // Step 2: Apply Attendance to base amount
+          let adjustedBase = baseAmount;
           let presentDays = daysInMonth;
           let absentDays = 0;
           let noteExtra = '';
 
           if (attRule === 'none') {
-            // No attendance impact — full pool
-            adjustedPool = pool;
+            adjustedBase = baseAmount;
             noteExtra = '(No attendance)';
 
           } else if (attRule === 'monthly') {
-            // Monthly: ratio-based proration
             absentDays = getAbsentDays(staff.id);
             presentDays = daysInMonth - absentDays;
             if (daysInMonth > 0) {
-              adjustedPool = Math.round(pool * (presentDays / daysInMonth) * 100) / 100;
+              adjustedBase = Math.round(baseAmount * (presentDays / daysInMonth) * 100) / 100;
             }
             noteExtra = `(Monthly: ${presentDays}/${daysInMonth} days)`;
 
           } else if (attRule === 'daily') {
-            // Daily: day-wise filtering — sum only OT income from present days
             const dailyData = getDailyPresentIncome(staff.id);
             presentDays = dailyData.presentDays;
             absentDays = dailyData.absentDays;
-            
-            if (addon.amount_source === 'MANUAL') {
-               // Pool based on present-day ratio since manual sum is static
-               adjustedPool = daysInMonth > 0 ? Math.round(pool * (presentDays / daysInMonth) * 100) / 100 : 0;
-               noteExtra = `(Daily Fixed: ${presentDays}/${daysInMonth} days)`;
+            if (isManual) {
+              adjustedBase = daysInMonth > 0 ? Math.round(baseAmount * (presentDays / daysInMonth) * 100) / 100 : 0;
+              noteExtra = `(Daily Fixed: ${presentDays}/${daysInMonth} days)`;
             } else {
-               // Pool based on present-day income only, not total OT income
-               adjustedPool = totalOTIncome > 0
-                 ? Math.round(pool * (dailyData.presentIncome / totalOTIncome) * 100) / 100
-                 : 0;
-               noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
+              adjustedBase = totalOTIncome > 0
+                ? Math.round(baseAmount * (dailyData.presentIncome / totalOTIncome) * 100) / 100
+                : 0;
+              noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
             }
           }
 
+          // Step 3: Apply Percentage on adjusted base
+          const pool = Math.round(adjustedBase * (addonPct / 100) * 100) / 100;
+
+          // Step 4: Group or Individual division
           let share = distType === 'group'
-            ? (presentCount > 0 ? Math.round((adjustedPool / presentCount) * 100) / 100 : 0)
-            : adjustedPool;
+            ? (staffCount > 0 ? Math.round((pool / staffCount) * 100) / 100 : 0)
+            : pool;
 
           if (share > 0) {
             addonResults.push({
               staff_id: staff.id,
               department_id: department_id,
               date: `${month}-01`,
-              income_amount: pool,  // The actual pool base (manual amount or TDA×pct)
+              income_amount: baseAmount,
               calculation_type: 'rule',
-              rule_percentage: isManual ? '100' : String(addonPct),  // For manual: 100% of pool; for TDA: the pct
+              rule_percentage: String(addonPct),
               distribution_type: distType,
               pool_amount: pool,
-              present_count: presentCount,
+              present_count: staffCount,
               final_share: share,
               breakdown: {
                 role: staff.role,
-                percentage: isManual ? '100%' : `${addonPct}%`,
+                percentage: `${addonPct}%`,
                 type: 'addon_share',
                 note: `Add-on: ${addonDeptName} ${noteExtra}`,
                 addon_department: addonDeptName,
-                addon_pct: isManual ? 'Fixed' : `${addonPct}%`,
-                addon_pool: pool,
-                adjusted_pool: adjustedPool,
+                addon_pct: `${addonPct}%`,
+                base_amount: baseAmount,
+                adjusted_base: adjustedBase,
+                pool_after_pct: pool,
                 distribution_type: distType,
                 attendance_rule: attRule,
                 amount_source: isManual ? 'MANUAL' : 'TDA',
@@ -297,6 +292,7 @@ export async function POST(req: Request) {
                 total_days: daysInMonth,
                 present_days: presentDays,
                 absent_days: absentDays,
+                staff_count: staffCount,
               },
             });
           }

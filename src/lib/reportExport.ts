@@ -49,7 +49,7 @@ interface StaffReportData {
   addon_contributions?: {
     department: string; share: number; pct: string;
     attendance: string; note: string;
-    pool?: number; adjusted_pool?: number;
+    base_amount?: number; adjusted_base?: number; pool?: number;
     present_days?: number; total_days?: number; absent_days?: number;
     present_count?: number; distribution_type?: string;
     amount_source?: string; manual_amount?: number | null;
@@ -125,8 +125,8 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       if (!hasCoreOT) {
         // Addon-only staff: override workAmount and percentage for the normal report
         const ac = addonContribs[0];
-        finalWorkAmount = ac.pool || 0;
-        finalPercentage = ac.amount_source === 'MANUAL' ? 'Fixed' : ac.pct;
+        finalWorkAmount = ac.amount_source === 'MANUAL' ? ac.base_amount || 0 : ac.pool || 0;
+        finalPercentage = ac.pct;
       }
       for (const ac of addonContribs) {
          parts.push(`[Add-on: ${ac.department} → ₹${ac.share.toLocaleString('en-IN')}]`);
@@ -235,33 +235,38 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         // ADDON-ONLY staff: show addon calculation breakdown
         const ac = addonContribs[0]; // Primary addon
         const isManualAddon = ac.amount_source === 'MANUAL';
+        const baseAmt = ac.base_amount || 0;
+        const adjBase = ac.adjusted_base || 0;
         const addonPool = ac.pool || 0;
-        const adjPool = ac.adjusted_pool || 0;
         const pDays = ac.present_days ?? 0;
         const tDays = ac.total_days ?? 0;
         const aDays = ac.absent_days ?? 0;
         const addonCount = ac.present_count || 1;
         const addonDist = ac.distribution_type || 'individual';
 
-        workingAmount = addonPool;
-        displayPercentage = isManualAddon ? 'Fixed' : ac.pct;
+        workingAmount = isManualAddon ? baseAmt : addonPool;
+        displayPercentage = ac.pct;
         distributionType = addonDist === 'group' ? 'Group' : 'Individual';
         groupCount = addonDist === 'group' ? addonCount : '-';
 
         const parts: string[] = [];
         if (isManualAddon) {
-          parts.push(`Manual Amount: ₹${addonPool.toLocaleString('en-IN')}`);
+          parts.push(`Manual Amount: ₹${baseAmt.toLocaleString('en-IN')}`);
         } else {
-          parts.push(`Pool: ₹${addonPool.toLocaleString('en-IN')}`);
+          parts.push(`Department TDA: ₹${baseAmt.toLocaleString('en-IN')}`);
         }
 
         if (ac.attendance !== 'none' && tDays > 0) {
           parts.push(`Attendance: ${pDays}/${tDays} days (${aDays} off)`);
-          parts.push(`Adjusted: ₹${adjPool.toLocaleString('en-IN')}`);
+          parts.push(`Adjusted Base: ₹${adjBase.toLocaleString('en-IN')}`);
         }
+
+        parts.push(`× ${ac.pct} = Pool: ₹${addonPool.toLocaleString('en-IN')}`);
 
         if (addonDist === 'group') {
           parts.push(`÷ ${addonCount} staff = ₹${s.total_share.toLocaleString('en-IN')}`);
+        } else {
+          parts.push(`Final Share = ₹${s.total_share.toLocaleString('en-IN')}`);
         }
 
         calculationBreakdown = parts.join('\n');

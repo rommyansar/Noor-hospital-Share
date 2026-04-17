@@ -380,7 +380,7 @@ export default function OTEntryPage() {
         body: JSON.stringify({
           month: monthStr,
           department_id: selectedDept,
-          addons: addons.filter(a => a.addon_department_id && (a.percentage > 0 || (a.amount_source === 'MANUAL' && Number(a.manual_amount) > 0))).map(a => ({
+          addons: addons.filter(a => a.addon_department_id && a.percentage > 0).map(a => ({
             addon_department_id: a.addon_department_id,
             percentage: a.percentage,
             calculation_type: a.calculation_type || 'individual',
@@ -821,17 +821,11 @@ export default function OTEntryPage() {
                         </div>
                         <div>
                           <label className="field-label">Share Percentage (%)</label>
-                          {addon.amount_source === 'MANUAL' ? (
-                            <div className="flex items-center text-slate-500 bg-slate-800/50 rounded-lg px-3" style={{ minHeight: '44px' }}>
-                              <span>N/A (Fixed Amount)</span>
-                            </div>
-                          ) : (
-                            <input type="number" value={addon.percentage} onChange={e => {
-                              const next = [...addons];
-                              next[aIdx] = { ...next[aIdx], percentage: parseFloat(e.target.value) || 0 };
-                              setAddons(next);
-                            }} className="text-input" placeholder="e.g. 10" style={{ minHeight: '44px' }} />
-                          )}
+                          <input type="number" value={addon.percentage} onChange={e => {
+                            const next = [...addons];
+                            next[aIdx] = { ...next[aIdx], percentage: parseFloat(e.target.value) || 0 };
+                            setAddons(next);
+                          }} className="text-input" placeholder="e.g. 10" style={{ minHeight: '44px' }} />
                         </div>
                         <div>
                           <label className="field-label">Attendance Rule</label>

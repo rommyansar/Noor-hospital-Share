@@ -111,30 +111,35 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     const parts: string[] = [];
     const rawCases = (s as any).raw_cases || [];
     if (hasOTData && rawCases.length > 0) {
-      const pctGroups: Record<number, { amount: number; share: number }> = {};
+      const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
       for (const rc of rawCases) {
-        const effPct = rc.mode === 'group' && rc.group_count > 1
-          ? Math.round((rc.pct / rc.group_count) * 10000) / 10000
-          : rc.pct;
-        if (!pctGroups[effPct]) pctGroups[effPct] = { amount: 0, share: 0 };
-        pctGroups[effPct].amount += rc.amount;
-        pctGroups[effPct].share += rc.share;
+        const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
+        if (!groups[key]) groups[key] = { amount: 0, share: 0, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1 };
+        groups[key].amount += rc.amount;
+        groups[key].share += rc.share;
       }
       
-      // Sort percentages descending
-      const sortedPcts = Object.keys(pctGroups).map(Number).sort((a, b) => b - a);
-      for (const pct of sortedPcts) {
-        const data = pctGroups[pct];
-        const effPctStr = pct % 1 === 0 ? `${pct}%` : `${parseFloat(pct.toFixed(4))}%`;
-        parts.push(`${effPctStr} → ₹${data.amount.toLocaleString('en-IN')} → ₹${Math.round(data.share).toLocaleString('en-IN')}`);
+      const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
+      for (const key of sortedKeys) {
+        const data = groups[key];
+        const pctStr = data.pct % 1 === 0 ? `${data.pct}%` : `${parseFloat(data.pct.toFixed(4))}%`;
+        const amountStr = data.amount.toLocaleString('en-IN');
+        const shareStr = Math.round(data.share).toLocaleString('en-IN');
+        
+        if (data.mode === 'group' && data.group_count > 1) {
+          const poolAmt = Math.round(data.amount * (data.pct / 100) * 100) / 100;
+          parts.push(`Rs. ${amountStr} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${data.group_count} staff = Rs. ${shareStr}`);
+        } else {
+          parts.push(`${pctStr} -> Rs. ${amountStr} = Rs. ${shareStr}`);
+        }
       }
       
       // Compute OT total (before addons)
       const coreShare = rawCases.reduce((sum: number, rc: any) => sum + rc.share, 0);
-      parts.push(`= Total Share: ₹${Math.round(coreShare).toLocaleString('en-IN')}`);
+      parts.push(`= Total Share: Rs. ${Math.round(coreShare).toLocaleString('en-IN')}`);
     } else if (hasOTData && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0)) {
-      if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
-      if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
+      if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (Rs. ${(s.major_base || 0).toLocaleString('en-IN')})`);
+      if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (Rs. ${(s.minor_base || 0).toLocaleString('en-IN')})`);
     }
 
     const addonContribs = (s as any).addon_contributions || [];
@@ -152,16 +157,22 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
         finalPercentage = ac.pct;
       }
       for (const ac of addonContribs) {
-         parts.push(`[Add-on: ${ac.department} → ₹${ac.share.toLocaleString('en-IN')}]`);
+         const acAmt = (ac.amount_source === 'MANUAL' ? ac.base_amount : ac.pool) || 0;
+         const acPctStr = ac.pct;
+         const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
+         
+         if (ac.distribution_type === 'group' && ac.present_count > 1) {
+           parts.push(`Rs. ${acAmt.toLocaleString('en-IN')} x ${acPctStr} = Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Rs. ${acShareStr}`);
+         } else {
+           parts.push(`${acPctStr} -> Rs. ${acAmt.toLocaleString('en-IN')} = Rs. ${acShareStr}`);
+         }
       }
     }
     otBreakdown = parts.join('\n');
 
     return {
       srNo: idx + 1,
-      staffName: s.origin_department !== data.department_name 
-        ? `${s.staff_name} (${s.origin_department})` 
-        : s.staff_name,
+      staffName: s.staff_name,
       workAmount: Math.round(finalWorkAmount * 100) / 100,
       percentage: finalPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
@@ -274,22 +285,22 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
 
         const parts: string[] = [];
         if (isManualAddon) {
-          parts.push(`Manual Amount: ₹${baseAmt.toLocaleString('en-IN')}`);
+          parts.push(`Manual Amount: Rs. ${baseAmt.toLocaleString('en-IN')}`);
         } else {
-          parts.push(`Department TDA: ₹${baseAmt.toLocaleString('en-IN')}`);
+          parts.push(`Department TDA: Rs. ${baseAmt.toLocaleString('en-IN')}`);
         }
 
         if (ac.attendance !== 'none' && tDays > 0) {
           parts.push(`Attendance: ${pDays}/${tDays} days (${aDays} off)`);
-          parts.push(`Adjusted Base: ₹${adjBase.toLocaleString('en-IN')}`);
+          parts.push(`Adjusted Base: Rs. ${adjBase.toLocaleString('en-IN')}`);
         }
 
-        parts.push(`× ${ac.pct} = Pool: ₹${addonPool.toLocaleString('en-IN')}`);
+        parts.push(`x ${ac.pct} = Pool: Rs. ${addonPool.toLocaleString('en-IN')}`);
 
         if (addonDist === 'group') {
-          parts.push(`÷ ${addonCount} staff = ₹${s.total_share.toLocaleString('en-IN')}`);
+          parts.push(`/ ${addonCount} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`);
         } else {
-          parts.push(`Final Share = ₹${s.total_share.toLocaleString('en-IN')}`);
+          parts.push(`Final Share = Rs. ${s.total_share.toLocaleString('en-IN')}`);
         }
 
         calculationBreakdown = parts.join('\n');
@@ -300,27 +311,31 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         // Check for raw_cases (case-by-case OT breakdown)
         const rawCases = (s as any).raw_cases || [];
         if (rawCases.length > 0) {
-          const pctGroups: Record<number, { amount: number; share: number }> = {};
+          const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
           for (const rc of rawCases) {
-            const effPct = rc.mode === 'group' && rc.group_count > 1
-              ? Math.round((rc.pct / rc.group_count) * 10000) / 10000
-              : rc.pct;
-            if (!pctGroups[effPct]) pctGroups[effPct] = { amount: 0, share: 0 };
-            pctGroups[effPct].amount += rc.amount;
-            pctGroups[effPct].share += rc.share;
+            const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
+            if (!groups[key]) groups[key] = { amount: 0, share: 0, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1 };
+            groups[key].amount += rc.amount;
+            groups[key].share += rc.share;
           }
 
           const caseParts: string[] = [];
-          // Sort percentages descending
-          const sortedPcts = Object.keys(pctGroups).map(Number).sort((a, b) => b - a);
-          for (const pct of sortedPcts) {
-            const data = pctGroups[pct];
-            const effPctStr = pct % 1 === 0 ? `${pct}%` : `${parseFloat(pct.toFixed(4))}%`;
-            caseParts.push(`${effPctStr} → ₹${data.amount.toLocaleString('en-IN')} → ₹${Math.round(data.share).toLocaleString('en-IN')}`);
+          const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
+          for (const key of sortedKeys) {
+            const data = groups[key];
+            const pctStr = data.pct % 1 === 0 ? `${data.pct}%` : `${parseFloat(data.pct.toFixed(4))}%`;
+            const amountStr = data.amount.toLocaleString('en-IN');
+            const shareStr = Math.round(data.share).toLocaleString('en-IN');
+            
+            if (data.mode === 'group' && data.group_count > 1) {
+              const poolAmt = Math.round(data.amount * (data.pct / 100) * 100) / 100;
+              caseParts.push(`Rs. ${amountStr} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${data.group_count} staff = Rs. ${shareStr}`);
+            } else {
+              caseParts.push(`${pctStr} -> Rs. ${amountStr} = Rs. ${shareStr}`);
+            }
           }
-          // Compute OT core share (before addons)
           const coreShare = rawCases.reduce((sum: number, rc: any) => sum + rc.share, 0);
-          caseParts.push(`= OT Total: ₹${Math.round(coreShare).toLocaleString('en-IN')}`);
+          caseParts.push(`= OT Total: Rs. ${Math.round(coreShare).toLocaleString('en-IN')}`);
           calculationBreakdown = caseParts.join('\n');
         } else {
           // Fallback: old summary style
@@ -328,36 +343,30 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
           if (distType === 'group') {
             const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
             const count = firstEntry.present_count || 1;
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n÷ ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
           } else {
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} × ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
           }
         }
 
         // If has addon contributions, append them
         if (hasAddon) {
           for (const ac of addonContribs) {
-            const isManualAc = ac.amount_source === 'MANUAL';
-            const acParts: string[] = [];
-            acParts.push(`\n[Add-on: ${ac.department}]`);
-            if (isManualAc) {
-              acParts.push(`Manual: ₹${(ac.base_amount || 0).toLocaleString('en-IN')}`);
+            const acAmt = (ac.amount_source === 'MANUAL' ? ac.base_amount : ac.pool) || 0;
+            const acPctStr = ac.pct;
+            const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
+            
+            if (ac.distribution_type === 'group' && ac.present_count > 1) {
+              calculationBreakdown += `\nRs. ${acAmt.toLocaleString('en-IN')} x ${acPctStr} = Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Rs. ${acShareStr}`;
+            } else {
+              calculationBreakdown += `\n${acPctStr} -> Rs. ${acAmt.toLocaleString('en-IN')} = Rs. ${acShareStr}`;
             }
-            if (ac.attendance !== 'none' && ac.total_days > 0) {
-              acParts.push(`${ac.present_days}/${ac.total_days} days`);
-            }
-            acParts.push(`× ${ac.pct}`);
-            if (ac.distribution_type === 'group') {
-              acParts.push(`÷ ${ac.present_count} staff`);
-            }
-            acParts.push(`= ₹${ac.share.toLocaleString('en-IN')}`);
-            calculationBreakdown += acParts.join(' ');
           }
         }
 
         // If addon, prepend addon context
         if (isAddon && note && !hasAddon) {
-          calculationBreakdown = `[${note}]\n→ ${calculationBreakdown}`;
+          calculationBreakdown = `[${note}]\n-> ${calculationBreakdown}`;
         }
       }
     }

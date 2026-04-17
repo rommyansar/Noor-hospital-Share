@@ -37,6 +37,14 @@ interface StaffReportData {
   work_entries: WorkEntry[];
   rule_entries: RuleEntry[];
   daily_details?: { date: string; share: number; type: string; note?: string }[];
+  // OT case-type breakdown
+  major_cases?: number;
+  minor_cases?: number;
+  major_base?: number;
+  minor_base?: number;
+  combined_working_amount?: number;
+  ot_mode?: string;
+  ot_group_count?: number;
 }
 
 export interface ReportExportData {
@@ -64,9 +72,13 @@ interface NormalRow {
   workAmount: number;
   percentage: string;
   shareAmount: number;
+  otBreakdown: string;
 }
 
 function buildNormalRows(data: ReportExportData): NormalRow[] {
+  // Check if this is an OT department by seeing if any staff has OT breakdown data
+  const hasOTData = data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
+
   return data.staff.map((s, idx) => {
     // Combine all work entry amounts
     const totalWorkAmount = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
@@ -85,6 +97,16 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     const ruleWorkAmount = s.rule_entries.reduce((sum, r) => sum + r.income_amount, 0);
     const workAmount = totalWorkAmount > 0 ? totalWorkAmount : ruleWorkAmount;
 
+    // Build OT breakdown string for normal report
+    let otBreakdown = '';
+    if (hasOTData && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0)) {
+      const parts: string[] = [];
+      if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (₹${(s.major_base || 0).toLocaleString('en-IN')})`);
+      if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (₹${(s.minor_base || 0).toLocaleString('en-IN')})`);
+      if (s.ot_mode) parts.push(`${s.ot_mode}${(s.ot_group_count || 0) > 1 ? ` ÷${s.ot_group_count}` : ''}`);
+      otBreakdown = parts.join(' | ');
+    }
+
     return {
       srNo: idx + 1,
       staffName: s.origin_department !== data.department_name 
@@ -94,6 +116,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       workAmount: Math.round(workAmount * 100) / 100,
       percentage: displayPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
+      otBreakdown,
     };
   });
 }
@@ -261,15 +284,14 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
 
   if (type === 'normal') {
     const rows = buildNormalRows(data);
-    const tableHeader = ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
-    const tableRows = rows.map(r => [
-      r.srNo,
-      r.staffName,
-      r.role,
-      r.workAmount,
-      r.percentage,
-      r.shareAmount,
-    ]);
+    const hasOTData = rows.some(r => r.otBreakdown);
+    const tableHeader = hasOTData
+      ? ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'OT Breakdown', 'Share Amount (Rs.)']
+      : ['Sr. No.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
+    const tableRows = rows.map(r => hasOTData
+      ? [r.srNo, r.staffName, r.role, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]
+      : [r.srNo, r.staffName, r.role, r.workAmount, r.percentage, r.shareAmount]
+    );
 
     sheetData = [
       ...headerRows,
@@ -313,14 +335,25 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
 
   // Set column widths
   if (type === 'normal') {
-    ws['!cols'] = [
-      { wch: 8 },   // Sr. No.
-      { wch: 28 },  // Staff Name
-      { wch: 18 },  // Role
-      { wch: 18 },  // Work Amount
-      { wch: 15 },  // Percentage
-      { wch: 18 },  // Share Amount
-    ];
+    const hasOTData = data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
+    ws['!cols'] = hasOTData
+      ? [
+          { wch: 8 },   // Sr. No.
+          { wch: 28 },  // Staff Name
+          { wch: 18 },  // Role
+          { wch: 18 },  // Work Amount
+          { wch: 15 },  // Percentage
+          { wch: 45 },  // OT Breakdown
+          { wch: 18 },  // Share Amount
+        ]
+      : [
+          { wch: 8 },   // Sr. No.
+          { wch: 28 },  // Staff Name
+          { wch: 18 },  // Role
+          { wch: 18 },  // Work Amount
+          { wch: 15 },  // Percentage
+          { wch: 18 },  // Share Amount
+        ];
   } else {
     ws['!cols'] = [
       { wch: 5 },   // Sr.
@@ -340,7 +373,8 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   }
 
   // Merge header cells
-  const colCount = type === 'normal' ? 6 : 13;
+  const hasOTCol = type === 'normal' && data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
+  const colCount = type === 'normal' ? (hasOTCol ? 7 : 6) : 13;
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Hospital name
     { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, // Report title
@@ -425,37 +459,53 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   // ── Table ──
   if (type === 'normal') {
     const rows = buildNormalRows(data);
+    const hasOTData = rows.some(r => r.otBreakdown);
+
+    const headCols = hasOTData
+      ? ['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', '%', 'OT Breakdown', 'Share Amount (Rs.)']
+      : ['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)'];
+
+    const bodyRows = rows.map(r => hasOTData
+      ? [r.srNo, r.staffName, r.role, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]
+      : [r.srNo, r.staffName, r.role, formatCurrency(r.workAmount), r.percentage, formatCurrency(r.shareAmount)]
+    );
+
+    const colStyles: Record<number, any> = hasOTData
+      ? {
+          0: { halign: 'center', cellWidth: 12 },
+          1: { halign: 'left', cellWidth: 35 },
+          2: { halign: 'center', cellWidth: 25 },
+          3: { halign: 'right', cellWidth: 25 },
+          4: { halign: 'center', cellWidth: 15 },
+          5: { halign: 'left', cellWidth: 50 },
+          6: { halign: 'right', cellWidth: 25 },
+        }
+      : {
+          0: { halign: 'center', cellWidth: 15 },
+          1: { halign: 'left', cellWidth: 45 },
+          2: { halign: 'center', cellWidth: 30 },
+          3: { halign: 'right', cellWidth: 30 },
+          4: { halign: 'center', cellWidth: 25 },
+          5: { halign: 'right', cellWidth: 30 },
+        };
+
     autoTable(doc, {
       startY: yPos,
-      head: [['Sr.', 'Staff Name', 'Role', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)']],
-      body: rows.map(r => [
-        r.srNo,
-        r.staffName,
-        r.role,
-        formatCurrency(r.workAmount),
-        r.percentage,
-        formatCurrency(r.shareAmount),
-      ]),
+      head: [headCols],
+      body: bodyRows,
       theme: 'grid',
       headStyles: {
         fillColor: [16, 185, 129],
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 10,
+        fontSize: hasOTData ? 8 : 10,
         halign: 'center',
       },
       bodyStyles: {
-        fontSize: 9,
+        fontSize: hasOTData ? 8 : 9,
         cellPadding: 3,
       },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 15 },
-        1: { halign: 'left', cellWidth: 45 },
-        2: { halign: 'center', cellWidth: 30 },
-        3: { halign: 'right', cellWidth: 30 },
-        4: { halign: 'center', cellWidth: 25 },
-        5: { halign: 'right', cellWidth: 30 },
-      },
+      columnStyles: colStyles,
       alternateRowStyles: {
         fillColor: [245, 250, 248],
       },

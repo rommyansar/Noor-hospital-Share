@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ── Allowed Department Names (case-insensitive match) ──
-const OT_ALLOWED_DEPARTMENTS = ['delivery', 'general surgery'];
+const OT_ALLOWED_DEPARTMENTS = ['delivery', 'general surgery', 'eye operation'];
 
 // ── Reusable Searchable Multi-Select ──
 function MultiSelect({ options, selected, onChange, placeholder }: { options: {value: string, label: string}[], selected: string[], onChange: (v: string[]) => void, placeholder: string }) {
@@ -274,18 +274,44 @@ export default function OTEntryPage() {
   });
 
   // ── Global Change Handlers ──
+  // Update global header — only updates rows whose current pct matches the OLD global value
+  // Rows with manual overrides (different from old global) are preserved
   const updateGlobal = (field: string, val: any) => {
-    if(field === 'gDocPct') { setGDocPct(val); updateAllCases('doctor_pct', val); }
-    if(field === 'gADocPct') { setGADocPct(val); updateAllCases('assist_doctor_pct', val); }
-    if(field === 'gADocMode') { setGADocMode(val); updateAllCases('assist_doctor_mode', val); }
-    if(field === 'gANursePct') { setGANursePct(val); updateAllCases('assist_nurse_pct', val); }
-    if(field === 'gANurseMode') { setGANurseMode(val); updateAllCases('assist_nurse_mode', val); }
-    if(field === 'gParamPct') { setGParamPct(val); updateAllCases('paramedical_pct', val); }
-    if(field === 'gParamMode') { setGParamMode(val); updateAllCases('paramedical_mode', val); }
+    if(field === 'gDocPct') {
+      const oldVal = gDocPct;
+      setGDocPct(val);
+      setCases(prev => prev.map(c => c.doctor_pct === oldVal ? { ...c, doctor_pct: val } : c));
+    }
+    if(field === 'gADocPct') {
+      const oldVal = gADocPct;
+      setGADocPct(val);
+      setCases(prev => prev.map(c => c.assist_doctor_pct === oldVal ? { ...c, assist_doctor_pct: val } : c));
+    }
+    if(field === 'gADocMode') { setGADocMode(val); setCases(prev => prev.map(c => ({ ...c, assist_doctor_mode: val }))); }
+    if(field === 'gANursePct') {
+      const oldVal = gANursePct;
+      setGANursePct(val);
+      setCases(prev => prev.map(c => c.assist_nurse_pct === oldVal ? { ...c, assist_nurse_pct: val } : c));
+    }
+    if(field === 'gANurseMode') { setGANurseMode(val); setCases(prev => prev.map(c => ({ ...c, assist_nurse_mode: val }))); }
+    if(field === 'gParamPct') {
+      const oldVal = gParamPct;
+      setGParamPct(val);
+      setCases(prev => prev.map(c => c.paramedical_pct === oldVal ? { ...c, paramedical_pct: val } : c));
+    }
+    if(field === 'gParamMode') { setGParamMode(val); setCases(prev => prev.map(c => ({ ...c, paramedical_mode: val }))); }
   };
 
-  const updateAllCases = (field: keyof OTCase, value: any) => {
-    setCases(prev => prev.map(c => ({ ...c, [field]: value })));
+  // Helper: update row pct — if cleared/empty, fallback to current header value
+  const updateRowPct = (id: string, field: 'doctor_pct' | 'assist_doctor_pct' | 'assist_nurse_pct' | 'paramedical_pct', rawVal: string) => {
+    const parsed = parseFloat(rawVal);
+    let fallback = 0;
+    if (field === 'doctor_pct') fallback = gDocPct;
+    else if (field === 'assist_doctor_pct') fallback = gADocPct;
+    else if (field === 'assist_nurse_pct') fallback = gANursePct;
+    else if (field === 'paramedical_pct') fallback = gParamPct;
+    const val = rawVal.trim() === '' ? fallback : (isNaN(parsed) ? fallback : parsed);
+    setCases(prev => prev.map(c => c.id === id ? { ...c, [field]: val } : c));
   };
 
   // ── Date Cascade ──
@@ -429,40 +455,71 @@ export default function OTEntryPage() {
       processRole(c.paramedical_ids || [], c.paramedical_pct, c.paramedical_mode!);
     });
 
+    // Build per-day OT income from cases (for daily attendance preview)
+    const otIncomeByDate: Record<string, number> = {};
+    cases.forEach(c => {
+      const amt = parseFloat(String(c.amount)) || 0;
+      const caseDate = c.date ? displayToIso(c.date) : '';
+      if (caseDate && amt > 0) {
+        otIncomeByDate[caseDate] = (otIncomeByDate[caseDate] || 0) + amt;
+      }
+    });
+
+    const totalDays = new Date(year, month, 0).getDate();
+
     const addonOut: any[] = [];
     addons.filter(a => a.addon_department_id && a.percentage > 0).forEach(addon => {
       const aDept = allDepartments.find(d => d.id === addon.addon_department_id);
       const pool = Math.round(totalOtSum * (addon.percentage / 100) * 100) / 100;
       const activeRules = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : (addonRulesMap[addon.addon_department_id] || []).map(r => r.id);
       const aStaff = addonStaffMap[addon.addon_department_id] || [];
-      const incomes = incomesMap[addon.addon_department_id] || [];
       const attRule = addon.attendance_rule || 'none';
 
-      const rows: any[] = [];
+      // Count staff per role for group distribution
+      const roleCounts: Record<string, number> = {};
+      aStaff.forEach(s => {
+        const rk = s.role.toUpperCase().trim();
+        roleCounts[rk] = (roleCounts[rk] || 0) + 1;
+      });
+
       aStaff.forEach(s => {
         const rule = (addonRulesMap[addon.addon_department_id] || []).find(r => activeRules.includes(r.id) && r.role.toUpperCase() === s.role.toUpperCase());
         if (!rule) return;
-        const pct = s.department_percentages?.[addon.addon_department_id] ? parseFloat(s.department_percentages[addon.addon_department_id]) : parseFloat(rule.percentage) || 0;
-        let absentDays = 0, workingDays = incomes.length;
-        if (attRule === 'daily') {
-          workingDays = incomes.filter(inc => inc.present_staff_ids?.includes(s.id)).length;
-          absentDays = incomes.length - workingDays;
-        } else if (attRule === 'monthly') {
-          absentDays = leavesList.filter(l => l.staff_id === s.id && l.leave_type === 'OFF').length;
-          workingDays = Math.max(0, new Date(year, month, 0).getDate() - absentDays);
-        }
-        rows.push({ staff: s, pct, distType: rule.distribution_type, poolTotal: pool, absentDays, workingDays });
-      });
 
-      rows.forEach(r => {
-        const groupStaff = rows.filter(x => x.distType === 'group' && x.staff.role === r.staff.role);
-        const groupPctSum = groupStaff.reduce((ss, x) => ss + x.pct, 0) || 1;
-        const baseShare = r.distType === 'individual' ? (pool * (r.pct / 100)) : (pool * (r.pct / 100)) * (r.pct / groupPctSum);
-        let finalShare = baseShare;
-        if (attRule === 'daily') finalShare = incomes.length ? (baseShare / incomes.length) * r.workingDays : 0;
-        if (attRule === 'monthly') finalShare = (baseShare / (r.workingDays + r.absentDays || 30)) * r.workingDays;
-        
-        addonOut.push({ deptName: aDept?.name, staffName: r.staff.name, role: r.staff.role, amount: finalShare });
+        const distType = rule.distribution_type || 'individual';
+        const presentCount = distType === 'group' ? (roleCounts[s.role.toUpperCase().trim()] || 1) : 1;
+
+        let adjustedPool = pool;
+
+        if (attRule === 'none') {
+          // No attendance impact
+          adjustedPool = pool;
+        } else if (attRule === 'monthly') {
+          // Monthly: ratio-based — count all leave days (OFF + CL)
+          const absentDays = leavesList.filter(l => l.staff_id === s.id).length;
+          const presentDays = Math.max(0, totalDays - absentDays);
+          adjustedPool = totalDays > 0 ? Math.round(pool * (presentDays / totalDays) * 100) / 100 : 0;
+        } else if (attRule === 'daily') {
+          // Daily: day-wise — sum only OT income from days staff was present
+          const absentDateSet = new Set(leavesList.filter(l => l.staff_id === s.id).map(l => l.date));
+          let presentIncome = 0;
+          const mStr = `${year}-${String(month).padStart(2, '0')}`;
+          for (let d = 1; d <= totalDays; d++) {
+            const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
+            if (!absentDateSet.has(dateStr)) {
+              presentIncome += (otIncomeByDate[dateStr] || 0);
+            }
+          }
+          adjustedPool = totalOtSum > 0 ? Math.round(pool * (presentIncome / totalOtSum) * 100) / 100 : 0;
+        }
+
+        const finalShare = distType === 'group'
+          ? Math.round((adjustedPool / presentCount) * 100) / 100
+          : adjustedPool;
+
+        if (finalShare > 0) {
+          addonOut.push({ deptName: aDept?.name, staffName: s.name, role: s.role, amount: finalShare });
+        }
       });
     });
 
@@ -484,7 +541,7 @@ export default function OTEntryPage() {
       <div className="page-header flex justify-between items-end mb-6">
         <div>
           <h1 className="page-title text-2xl font-bold flex items-center gap-2"><Stethoscope className="text-emerald-500" /> OT Entry</h1>
-          <p className="text-sm text-slate-400 mt-1">Surgery case tracking — Delivery &amp; General Surgery only</p>
+          <p className="text-sm text-slate-400 mt-1">Surgery case tracking — Delivery, General Surgery &amp; Eye Operation</p>
         </div>
         {selectedDept && isAllowedDept && (
           <button onClick={handleSave} disabled={saving} className="btn btn-primary flex items-center gap-2 px-5 py-2.5 text-sm">
@@ -536,7 +593,7 @@ export default function OTEntryPage() {
             <AlertTriangle size={24} />
             <div>
               <p className="font-bold text-lg">This department is not allowed in OT Entry</p>
-              <p className="text-sm text-red-400/70 mt-1">OT Entry is only available for Delivery and General Surgery departments.</p>
+              <p className="text-sm text-red-400/70 mt-1">OT Entry is only available for Delivery, General Surgery, and Eye Operation departments.</p>
             </div>
           </div>
         </div>
@@ -676,24 +733,32 @@ export default function OTEntryPage() {
                       <td className="p-3 border-l-2 border-emerald-500/20 bg-emerald-500/[0.02]" style={{ minWidth: '220px' }}>
                         <SingleSelect options={staffOpts} value={c.doctor_id || null} onChange={v => updateCase(c.id!, 'doctor_id', v)} placeholder="Select Doctor..." />
                       </td>
-                      <td className="p-3 border-r-2 border-emerald-500/20 bg-emerald-500/[0.02] text-center text-slate-400 font-medium">{c.doctor_pct}%</td>
+                      <td className="p-3 border-r-2 border-emerald-500/20 bg-emerald-500/[0.02] text-center">
+                        <input type="number" value={c.doctor_pct ?? ''} onChange={e => updateRowPct(c.id!, 'doctor_pct', e.target.value)} className="w-16 bg-slate-900/50 border border-slate-700 rounded-lg text-center px-1 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500/40 focus:outline-none" title="Row override (clear to use header default)" />
+                      </td>
 
                       <td className="p-3 border-l-2 border-blue-500/20 bg-blue-500/[0.02]" style={{ minWidth: '220px' }}>
                         <MultiSelect options={staffOpts} selected={c.assist_doctor_ids || []} onChange={v => updateCase(c.id!, 'assist_doctor_ids', v)} placeholder="Select Doctors..." />
                       </td>
-                      <td className="p-3 bg-blue-500/[0.02] text-center text-slate-400 font-medium">{c.assist_doctor_pct}%</td>
+                      <td className="p-3 bg-blue-500/[0.02] text-center">
+                        <input type="number" value={c.assist_doctor_pct ?? ''} onChange={e => updateRowPct(c.id!, 'assist_doctor_pct', e.target.value)} className="w-16 bg-slate-900/50 border border-slate-700 rounded-lg text-center px-1 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/40 focus:outline-none" title="Row override (clear to use header default)" />
+                      </td>
                       <td className="p-3 border-r-2 border-blue-500/20 bg-blue-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.assist_doctor_mode}</td>
 
                       <td className="p-3 border-l-2 border-purple-500/20 bg-purple-500/[0.02]" style={{ minWidth: '220px' }}>
                         <MultiSelect options={staffOpts} selected={c.assist_nurse_ids || []} onChange={v => updateCase(c.id!, 'assist_nurse_ids', v)} placeholder="Select Nurses..." />
                       </td>
-                      <td className="p-3 bg-purple-500/[0.02] text-center text-slate-400 font-medium">{c.assist_nurse_pct}%</td>
+                      <td className="p-3 bg-purple-500/[0.02] text-center">
+                        <input type="number" value={c.assist_nurse_pct ?? ''} onChange={e => updateRowPct(c.id!, 'assist_nurse_pct', e.target.value)} className="w-16 bg-slate-900/50 border border-slate-700 rounded-lg text-center px-1 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500/40 focus:outline-none" title="Row override (clear to use header default)" />
+                      </td>
                       <td className="p-3 border-r-2 border-purple-500/20 bg-purple-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.assist_nurse_mode}</td>
 
                       <td className="p-3 border-l-2 border-orange-500/20 bg-orange-500/[0.02]" style={{ minWidth: '220px' }}>
                         <MultiSelect options={staffOpts} selected={c.paramedical_ids || []} onChange={v => updateCase(c.id!, 'paramedical_ids', v)} placeholder="Select Paramedical..." />
                       </td>
-                      <td className="p-3 bg-orange-500/[0.02] text-center text-slate-400 font-medium">{c.paramedical_pct}%</td>
+                      <td className="p-3 bg-orange-500/[0.02] text-center">
+                        <input type="number" value={c.paramedical_pct ?? ''} onChange={e => updateRowPct(c.id!, 'paramedical_pct', e.target.value)} className="w-16 bg-slate-900/50 border border-slate-700 rounded-lg text-center px-1 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-orange-500/40 focus:outline-none" title="Row override (clear to use header default)" />
+                      </td>
                       <td className="p-3 border-r-2 border-orange-500/20 bg-orange-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.paramedical_mode}</td>
 
                       <td className="p-3 text-center">

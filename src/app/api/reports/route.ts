@@ -79,8 +79,34 @@ export async function GET(req: Request) {
         daily_details: [],
         work_entries: [],
         rule_entries: [],
+        // OT case-type breakdown fields
+        major_cases: 0,
+        minor_cases: 0,
+        major_base: 0,
+        minor_base: 0,
+        combined_working_amount: 0,
+        ot_mode: '',
+        ot_group_count: 0,
       };
       presentDates[r.staff_id] = new Set();
+    }
+    
+    // Extract OT case-type breakdown from stored breakdown (ot_core type)
+    if (breakdownObj?.type === 'ot_core' && breakdownObj?.case_details) {
+      const caseDetails = breakdownObj.case_details as Record<string, any>;
+      for (const [key, val] of Object.entries(caseDetails)) {
+        const caseType = key.split(' (')[0]; // "Major (Doctor)" → "Major"
+        if (caseType === 'Major') {
+          staffTotals[r.staff_id].major_cases += (val.entries?.length || 0);
+          staffTotals[r.staff_id].major_base += (val.total_amount || 0);
+        } else if (caseType === 'Minor') {
+          staffTotals[r.staff_id].minor_cases += (val.entries?.length || 0);
+          staffTotals[r.staff_id].minor_base += (val.total_amount || 0);
+        }
+      }
+      staffTotals[r.staff_id].combined_working_amount = r.income_amount || 0;
+      staffTotals[r.staff_id].ot_mode = breakdownObj.distribution || '';
+      staffTotals[r.staff_id].ot_group_count = breakdownObj.presentInRole || 0;
     }
     
     staffTotals[r.staff_id].total_share += r.final_share;

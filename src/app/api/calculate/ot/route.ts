@@ -127,6 +127,7 @@ export async function POST(req: Request) {
         ? `${parseInt(yearStr) + 1}-01-01`
         : `${yearStr}-${String(parseInt(monthNumStr) + 1).padStart(2, '0')}-01`;
 
+      // Fetch global leaves for attendance determination
       const { data: allLeavesData } = await supabase
         .from('staff_leaves')
         .select('*')
@@ -138,6 +139,16 @@ export async function POST(req: Request) {
         for (const l of allLeavesData) {
           if (!globalLeavesByDate[l.date]) globalLeavesByDate[l.date] = new Set();
           globalLeavesByDate[l.date].add(l.staff_id);
+        }
+      }
+
+      // Build per-day OT income from actual OT cases (for daily attendance mode)
+      const otIncomeByDate: Record<string, number> = {};
+      for (const c of otCases) {
+        const amt = parseFloat(c.amount) || 0;
+        const caseDate = c.date;
+        if (caseDate && amt > 0) {
+          otIncomeByDate[caseDate] = (otIncomeByDate[caseDate] || 0) + amt;
         }
       }
 
@@ -169,6 +180,7 @@ export async function POST(req: Request) {
           roleCounts[rk] = (roleCounts[rk] || 0) + 1;
         });
 
+        // Helper: count absent days from global staff_leaves
         const getAbsentDays = (staffId: string): number => {
           let absent = 0;
           for (let d = 1; d <= daysInMonth; d++) {
@@ -178,19 +190,62 @@ export async function POST(req: Request) {
           return absent;
         };
 
+        // Helper: for daily mode, sum only OT income from days staff was present
+        const getDailyPresentIncome = (staffId: string): { presentIncome: number; presentDays: number; absentDays: number } => {
+          let presentIncome = 0;
+          let presentDays = 0;
+          let absentDays = 0;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+            const dayIncome = otIncomeByDate[dateStr] || 0;
+            if (globalLeavesByDate[dateStr]?.has(staffId)) {
+              absentDays++;
+              // Skip this day's income — staff was absent
+            } else {
+              presentDays++;
+              presentIncome += dayIncome;
+            }
+          }
+          return { presentIncome, presentDays, absentDays };
+        };
+
         for (const staff of (addonStaff || [])) {
           const userRole = staff.role.toUpperCase().trim();
           const rule = ruleMap[userRole];
           if (!rule) continue;
 
           const distType = rule.distribution_type || 'individual';
-          const absentDays = getAbsentDays(staff.id);
-          const presentDays = daysInMonth - absentDays;
           const presentCount = distType === 'group' ? (roleCounts[userRole] || 1) : 1;
 
           let adjustedPool = pool;
-          if ((attRule === 'monthly' || attRule === 'daily') && daysInMonth > 0) {
-            adjustedPool = Math.round(pool * (presentDays / daysInMonth) * 100) / 100;
+          let presentDays = daysInMonth;
+          let absentDays = 0;
+          let noteExtra = '';
+
+          if (attRule === 'none') {
+            // No attendance impact — full pool
+            adjustedPool = pool;
+            noteExtra = '(No attendance)';
+
+          } else if (attRule === 'monthly') {
+            // Monthly: ratio-based proration
+            absentDays = getAbsentDays(staff.id);
+            presentDays = daysInMonth - absentDays;
+            if (daysInMonth > 0) {
+              adjustedPool = Math.round(pool * (presentDays / daysInMonth) * 100) / 100;
+            }
+            noteExtra = `(Monthly: ${presentDays}/${daysInMonth} days)`;
+
+          } else if (attRule === 'daily') {
+            // Daily: day-wise filtering — sum only OT income from present days
+            const dailyData = getDailyPresentIncome(staff.id);
+            presentDays = dailyData.presentDays;
+            absentDays = dailyData.absentDays;
+            // Pool based on present-day income only, not total OT income
+            adjustedPool = totalOTIncome > 0
+              ? Math.round(pool * (dailyData.presentIncome / totalOTIncome) * 100) / 100
+              : 0;
+            noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
           }
 
           let share = distType === 'group'
@@ -200,7 +255,7 @@ export async function POST(req: Request) {
           if (share > 0) {
             addonResults.push({
               staff_id: staff.id,
-              department_id: department_id,  // Real department ID
+              department_id: department_id,
               date: `${month}-01`,
               income_amount: totalOTIncome,
               calculation_type: 'rule',
@@ -213,7 +268,7 @@ export async function POST(req: Request) {
                 role: staff.role,
                 percentage: `${addonPct}%`,
                 type: 'addon_share',
-                note: `Add-on: ${addonDeptName}`,
+                note: `Add-on: ${addonDeptName} ${noteExtra}`,
                 addon_department: addonDeptName,
                 addon_pct: `${addonPct}%`,
                 addon_pool: pool,

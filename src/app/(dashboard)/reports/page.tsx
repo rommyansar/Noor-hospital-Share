@@ -34,6 +34,14 @@ interface StaffReport {
   daily_details: { date: string; share: number; type: string; note?: string }[];
   work_entries: WorkEntryDetail[];
   rule_entries: RuleEntryDetail[];
+  // OT case-type breakdown
+  major_cases?: number;
+  minor_cases?: number;
+  major_base?: number;
+  minor_base?: number;
+  combined_working_amount?: number;
+  ot_mode?: string;
+  ot_group_count?: number;
 }
 
 interface ReportData {
@@ -46,7 +54,7 @@ interface ReportData {
   staff: StaffReport[];
 }
 
-const OT_DEPT_NAMES = ['delivery', 'general surgery'];
+const OT_DEPT_NAMES = ['delivery', 'general surgery', 'eye operation'];
 
 export default function ReportsPage() {
   const { addToast } = useToast();
@@ -332,6 +340,38 @@ export default function ReportsPage() {
                               {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </span>
                           </div>
+
+                          {/* OT Case-Type Breakdown (for OT departments) */}
+                          {isOTDept && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0) && (
+                            <div style={{ padding: '6px 16px 6px 32px', background: 'rgba(16, 185, 129, 0.04)', borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
+                                {(s.major_cases || 0) > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Major</span>
+                                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.major_cases} cases</span>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>₹{(s.major_base || 0).toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                {(s.minor_cases || 0) > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Minor</span>
+                                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.minor_cases} cases</span>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>₹{(s.minor_base || 0).toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Working</span>
+                                  <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600 }}>₹{(s.combined_working_amount || 0).toLocaleString('en-IN')}</span>
+                                </div>
+                                {s.ot_mode && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Mode</span>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>{s.ot_mode}{(s.ot_group_count || 0) > 1 ? ` (÷${s.ot_group_count})` : ''}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Expanded daily detail */}
                           {isExpanded && (

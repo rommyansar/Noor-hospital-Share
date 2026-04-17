@@ -56,6 +56,8 @@ export async function POST(req: Request) {
     percentage: a.percentage || 0,
     attendance_rule: a.attendance_rule || 'none',
     applied_rules: a.applied_rules || [],
+    amount_source: a.amount_source || 'TDA',
+    manual_amount: a.manual_amount || null,
   }));
 
   const { data, error } = await supabase

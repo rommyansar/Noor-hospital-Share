@@ -99,8 +99,12 @@ async function processAddons(
     const attRule: 'daily' | 'monthly' | 'none' = addon.attendance_rule || 'none';
     const appliedRules: string[] = Array.isArray(addon.applied_rules) ? addon.applied_rules : [];
 
-    // Pool from MAIN department income
-    const pool = Math.round(mainIncome * (addonPct / 100) * 100) / 100;
+    // Pool from either explicit Manual Amount or the MAIN department income (TDA)
+    const baseIncome = addon.amount_source === 'MANUAL' 
+      ? (Number(addon.manual_amount) || 0) 
+      : mainIncome;
+      
+    const pool = Math.round(baseIncome * (addonPct / 100) * 100) / 100;
     totalAddonDeduction += pool;
 
     const staffList = addonStaffByDept[addonDeptId] || [];

@@ -295,7 +295,9 @@ export default function MonthlyEntryPage() {
             addon_department_id: a.addon_department_id,
             percentage: a.percentage,
             attendance_rule: a.attendance_rule || 'none',
-            applied_rules: a.applied_rules || []
+            applied_rules: a.applied_rules || [],
+            amount_source: a.amount_source || 'TDA',
+            manual_amount: a.amount_source === 'MANUAL' ? parseFloat(a.manual_amount) || null : null
           }))
         })
       });
@@ -1057,7 +1059,7 @@ export default function MonthlyEntryPage() {
             <button
               className="btn btn-secondary"
               style={{ fontSize: '12px', padding: '6px 12px' }}
-              onClick={() => setAddons([...addons, { addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none' }])}
+              onClick={() => setAddons([...addons, { addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', amount_source: 'TDA', manual_amount: '' }])}
             >
               + Add Add-On
             </button>
@@ -1176,49 +1178,89 @@ export default function MonthlyEntryPage() {
                       )}
                     </div>
 
-                    {/* Row 3: Attendance Rule */}
-                    <div>
-                      <label style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', display: 'block' }}>
-                        Attendance Rule
-                      </label>
-                      <div className="flex gap-2">
-                        {[
-                          { key: 'daily', label: '📅 Daily', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
-                          { key: 'monthly', label: '📊 Monthly', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-                          { key: 'none', label: '🚫 None', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
-                        ].map(opt => {
-                          const isActive = (addon.attendance_rule || 'none') === opt.key;
-                          return (
-                            <button
-                              key={opt.key}
-                              onClick={() => {
+                    {/* Row 3: Amount Source & Attendance Config */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-700/30">
+                      
+                      {/* Amount Source Control */}
+                      <div className="p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+                        <label className="form-label text-xs mb-2">Amount Source</label>
+                        <div className="flex gap-2 mb-3">
+                          <button
+                            className="flex-1 py-1.5 px-3 rounded text-xs font-semibold transition-all"
+                            style={{
+                              background: (addon.amount_source || 'TDA') === 'TDA' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(15, 23, 42, 0.5)',
+                              color: (addon.amount_source || 'TDA') === 'TDA' ? '#60a5fa' : '#64748b',
+                              border: (addon.amount_source || 'TDA') === 'TDA' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(71, 85, 105, 0.3)',
+                            }}
+                            onClick={() => {
+                              const next = [...addons];
+                              next[index].amount_source = 'TDA';
+                              setAddons(next);
+                            }}
+                          >
+                            TDA
+                          </button>
+                          <button
+                            className="flex-1 py-1.5 px-3 rounded text-xs font-semibold transition-all"
+                            style={{
+                              background: addon.amount_source === 'MANUAL' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(15, 23, 42, 0.5)',
+                              color: addon.amount_source === 'MANUAL' ? '#10b981' : '#64748b',
+                              border: addon.amount_source === 'MANUAL' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(71, 85, 105, 0.3)',
+                            }}
+                            onClick={() => {
+                              const next = [...addons];
+                              next[index].amount_source = 'MANUAL';
+                              setAddons(next);
+                            }}
+                          >
+                            Manual Amount
+                          </button>
+                        </div>
+                        
+                        {addon.amount_source === 'MANUAL' && (
+                          <div style={{ position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '12px' }}>₹</span>
+                            <input
+                              type="number"
+                              className="text-input"
+                              style={{ paddingLeft: '22px', height: '32px', fontSize: '13px' }}
+                              value={addon.manual_amount !== undefined && addon.manual_amount !== null ? addon.manual_amount : ''}
+                              onChange={(e) => {
                                 const next = [...addons];
-                                next[index].attendance_rule = opt.key;
+                                next[index].manual_amount = e.target.value;
                                 setAddons(next);
                               }}
-                              style={{
-                                flex: 1,
-                                padding: '8px 12px',
-                                fontSize: '12px',
-                                fontWeight: 700,
-                                borderRadius: '8px',
-                                border: isActive ? `2px solid ${opt.color}` : '2px solid rgba(71, 85, 105, 0.3)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                background: isActive ? opt.bg : 'transparent',
-                                color: isActive ? opt.color : '#64748b',
-                              }}
-                            >
-                              {opt.label}
-                            </button>
-                          );
-                        })}
+                              placeholder="Enter manual amount"
+                              min="0"
+                              step="0.01"
+                            />
+                            <p style={{ fontSize: '10px', color: '#10b981', marginTop: '4px' }}>Ignores main {targetDept?.name || 'dept'} TDA completely.</p>
+                          </div>
+                        )}
+                        {(addon.amount_source || 'TDA') === 'TDA' && (
+                          <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>Base pool scales dynamically with {targetDept?.name || 'dept'} TDA.</p>
+                        )}
                       </div>
-                      <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', fontStyle: 'italic' }}>
-                        {(addon.attendance_rule || 'none') === 'daily' && '→ Share only for days when staff is present'}
-                        {(addon.attendance_rule || 'none') === 'monthly' && '→ Share based on total monthly attendance (prorated)'}
-                        {(addon.attendance_rule || 'none') === 'none' && '→ No attendance adjustment applied'}
-                      </p>
+
+                      {/* Addon Attendance Rule */}
+                      <div className="p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+                        <label className="form-label text-xs mb-2">Staff Attendance Sync</label>
+                        <select
+                          className="select-field text-xs py-1.5 h-auto text-slate-300"
+                          value={addon.attendance_rule || 'none'}
+                          onChange={(e) => {
+                            const next = [...addons];
+                            next[index].attendance_rule = e.target.value;
+                            setAddons(next);
+                          }}
+                        >
+                          <option value="none" style={{ backgroundColor: '#1e293b' }}>Global None (Full Amount)</option>
+                          <option value="monthly" style={{ backgroundColor: '#1e293b' }}>Global Monthly (Ratio Based)</option>
+                          <option value="daily" style={{ backgroundColor: '#1e293b' }}>Global Daily (Day Selection)</option>
+                        </select>
+                        <p style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>Enforces deduction logic independently for internal Add-on Staff.</p>
+                      </div>
+
                     </div>
 
                     {/* Selected Rule Summary */}

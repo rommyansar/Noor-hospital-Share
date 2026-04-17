@@ -73,6 +73,31 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+// ── Helpers ─────────────────────────────────────
+
+/** Normalize a percentage value to always end with %. Handles strings like "10%", "3.75", "10" etc. */
+function normPct(val: string | number): string {
+  if (typeof val === 'number') {
+    return val % 1 === 0 ? `${val}%` : `${parseFloat(val.toFixed(4))}%`;
+  }
+  const s = String(val).trim();
+  if (!s) return '';
+  // Already has %
+  if (s.endsWith('%')) return s;
+  // Raw numeric string
+  const n = parseFloat(s);
+  if (!isNaN(n)) {
+    return n % 1 === 0 ? `${n}%` : `${parseFloat(n.toFixed(4))}%`;
+  }
+  return s;
+}
+
+/** Join an array of raw pct values into a clean comma-space-separated string with % on each. */
+function joinPcts(pcts: (string | number)[]): string {
+  const normalized = [...new Set(pcts.map(normPct))].filter(Boolean);
+  return normalized.join(', ');
+}
+
 // ── Normal Report Data ─────────────────────────
 
 interface NormalRow {
@@ -95,11 +120,9 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     // If there are work entries, calculate combined percentage from actual data
     let displayPercentage = '';
     if (s.work_entries.length > 0) {
-      const pcts = [...new Set(s.work_entries.map(w => w.percentage ? (w.percentage.includes('%') ? w.percentage : `${w.percentage}%`) : ''))].filter(Boolean);
-      displayPercentage = pcts.join(', ');
+      displayPercentage = joinPcts(s.work_entries.map(w => w.percentage));
     } else if (s.rule_entries.length > 0) {
-      const pcts = [...new Set(s.rule_entries.map(r => r.percentage ? (r.percentage.includes('%') ? r.percentage : `${r.percentage}%`) : ''))].filter(Boolean);
-      displayPercentage = pcts.join(', ');
+      displayPercentage = joinPcts(s.rule_entries.map(r => r.percentage));
     }
 
     // For rule-based staff, sum income amounts as "work amount"
@@ -114,7 +137,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     // Extracted percentages for OT Core
     let corePcts: string[] = [];
     if (hasOTData && rawCases.length > 0) {
-      corePcts = [...new Set(rawCases.map((rc: any) => rc.pct % 1 === 0 ? `${rc.pct}%` : `${parseFloat(rc.pct.toFixed(4))}%`))];
+      corePcts = rawCases.map((rc: any) => normPct(rc.pct));
       const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
       for (const rc of rawCases) {
         const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
@@ -126,7 +149,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
       for (const key of sortedKeys) {
         const data = groups[key];
-        const pctStr = data.pct % 1 === 0 ? `${data.pct}%` : `${parseFloat(data.pct.toFixed(4))}%`;
+        const pctStr = normPct(data.pct);
         const amountStr = data.amount.toLocaleString('en-IN');
         const shareStr = Math.round(data.share).toLocaleString('en-IN');
         
@@ -154,9 +177,8 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
     let finalPercentage = displayPercentage;
 
     if (hasAddon) {
-      const addonPcts = addonContribs.map((ac: any) => ac.pct);
-      const combinedPcts = [...new Set([...corePcts, ...addonPcts])].filter(Boolean);
-      finalPercentage = combinedPcts.join(', ');
+      const addonPcts = addonContribs.map((ac: any) => normPct(ac.pct));
+      finalPercentage = joinPcts([...corePcts, ...addonPcts]);
 
       if (!hasCoreOT) {
         // Addon-only staff
@@ -253,22 +275,20 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
     if (s.work_entries.length > 0) {
       // Work-entry based staff
       const totalWorkAmt = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
-      const pcts = [...new Set(s.work_entries.map(w => w.percentage ? (w.percentage.includes('%') ? w.percentage : `${w.percentage}%`) : ''))].filter(Boolean);
-      displayPercentage = pcts.join(', ');
+      displayPercentage = joinPcts(s.work_entries.map(w => w.percentage));
       distributionType = 'Work Entry';
       workingAmount = totalWorkAmt;
 
       const parts = s.work_entries.map(w => {
-        const pct = parseFloat(w.percentage || '0') || 0;
-        return `${w.description}: Rs. ${w.work_amount.toLocaleString('en-IN')} × ${pct}% = Rs. ${w.calculated_share.toLocaleString('en-IN')}`;
+        const pctStr = normPct(w.percentage || 0);
+        return `${w.description}: Rs. ${w.work_amount.toLocaleString('en-IN')} × ${pctStr} = Rs. ${w.calculated_share.toLocaleString('en-IN')}`;
       });
       calculationBreakdown = parts.join('\n');
 
     } else if (s.rule_entries.length > 0) {
       // Rule-based staff
       const firstEntry = s.rule_entries[0];
-      const pcts = [...new Set(s.rule_entries.map(r => r.percentage ? (r.percentage.includes('%') ? r.percentage : `${r.percentage}%`) : ''))].filter(Boolean);
-      displayPercentage = pcts.join(', ');
+      displayPercentage = joinPcts(s.rule_entries.map(r => r.percentage));
       
       const distType = firstEntry.distribution_type || 'individual';
       distributionType = distType === 'group' ? 'Group' : 'Individual';
@@ -341,7 +361,7 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
           const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
           for (const key of sortedKeys) {
             const data = groups[key];
-            const pctStr = data.pct % 1 === 0 ? `${data.pct}%` : `${parseFloat(data.pct.toFixed(4))}%`;
+            const pctStr = normPct(data.pct);
             const amountStr = data.amount.toLocaleString('en-IN');
             const shareStr = Math.round(data.share).toLocaleString('en-IN');
             
@@ -358,12 +378,13 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
         } else {
           // Fallback: old summary style
           const pct = parseFloat(firstEntry.percentage || '0') || 0;
+          const pctStr = normPct(pct);
           if (distType === 'group') {
             const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
             const count = firstEntry.present_count || 1;
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pct}% = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
           } else {
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pct}% = Rs. ${s.total_share.toLocaleString('en-IN')}`;
+            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pctStr} = Rs. ${s.total_share.toLocaleString('en-IN')}`;
           }
         }
 
@@ -383,7 +404,7 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
               acParts.push(`Adjusted Base: Rs. ${(ac.adjusted_base || 0).toLocaleString('en-IN')}`);
             }
             
-            const acPctStr = ac.pct;
+            const acPctStr = normPct(ac.pct);
             const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
             
             if (ac.distribution_type === 'group' && ac.present_count > 1) {
@@ -408,13 +429,17 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
     let corePcts: string[] = [];
     const rawCases = (s as any).raw_cases || [];
     if (rawCases.length > 0) {
-      corePcts = [...new Set(rawCases.map((rc: any) => rc.pct % 1 === 0 ? `${rc.pct}%` : `${parseFloat(rc.pct.toFixed(4))}%`))];
+      corePcts = rawCases.map((rc: any) => normPct(rc.pct));
     }
+    
+    // Check addon presence again for the bottom export builder
+    const addonContribs = (s as any).addon_contributions || [];
+    const hasAddon = addonContribs.length > 0;
+    const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
 
     if (hasAddon) {
-      const addonPcts = addonContribs.map((ac: any) => ac.pct);
-      const combinedPcts = [...new Set([...corePcts, ...addonPcts])].filter(Boolean);
-      finalPercentage = combinedPcts.join(', ');
+      const addonPcts = addonContribs.map((ac: any) => normPct(ac.pct));
+      finalPercentage = joinPcts([...corePcts, ...addonPcts]);
 
       if (!hasCoreOT) {
         // Addon-only staff
@@ -432,7 +457,7 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
     } else {
       // Non-addon mixed/core OT
       if (corePcts.length > 0) {
-        finalPercentage = corePcts.join(', ');
+        finalPercentage = joinPcts(corePcts);
       }
     }
 

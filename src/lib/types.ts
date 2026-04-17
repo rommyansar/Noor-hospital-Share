@@ -107,6 +107,7 @@ export interface StaffWorkEntry {
 export interface OTMonthlyAddon {
   id: string;
   month: string;
+  department_id: string;
   addon_department_id: string;
   percentage: number;
   calculation_type: 'individual' | 'group';
@@ -118,6 +119,7 @@ export interface OTMonthlyAddon {
 export interface OTCase {
   id: string;
   month: string;
+  department_id: string;
   date: string;
   case_type: 'Major' | 'Minor';
   amount: number;

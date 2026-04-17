@@ -1,13 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Save, Plus, Trash2, Copy, Activity, Users, Settings, FileSpreadsheet, FileText } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Save, Plus, Trash2, Copy, Activity, Users, Settings, FileSpreadsheet, FileText, Stethoscope, AlertTriangle } from 'lucide-react';
 import { Staff, OTCase, Department, DepartmentRule, OTMonthlyAddon, StaffLeave, DailyIncome } from '@/lib/types';
+import { MONTHS } from '@/lib/types';
+import { useToast } from '@/components/ui/ToastProvider';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Reusing same utility components
+// ── Allowed Department Names (case-insensitive match) ──
+const OT_ALLOWED_DEPARTMENTS = ['delivery', 'general surgery'];
+
+// ── Reusable Searchable Multi-Select ──
 function MultiSelect({ options, selected, onChange, placeholder }: { options: {value: string, label: string}[], selected: string[], onChange: (v: string[]) => void, placeholder: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -24,15 +29,15 @@ function MultiSelect({ options, selected, onChange, placeholder }: { options: {v
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="w-full text-left truncate px-4 py-2 rounded-lg border border-slate-600 bg-slate-800 text-[13px] text-slate-200" onClick={() => setOpen(!open)}>
-        {selected.length ? `${selected.length} Selected` : <span className="text-slate-400">{placeholder}</span>}
+      <button type="button" className="w-full text-left truncate px-4 py-3 rounded-lg border border-slate-600 bg-slate-800 text-sm text-slate-200 min-h-[44px] hover:border-slate-500 transition-colors" onClick={() => setOpen(!open)}>
+        {selected.length ? <span className="text-emerald-400 font-medium">{selected.length} Selected</span> : <span className="text-slate-400">{placeholder}</span>}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-2xl z-50 p-2 block">
-          <input type="text" placeholder="Search staff..." className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2 rounded mb-2 text-sm focus:outline-none" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-80 overflow-y-auto bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 p-2 block">
+          <input type="text" placeholder="Search staff..." className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2.5 rounded-lg mb-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
           {filtered.length === 0 ? <div className="text-sm text-slate-500 p-2 text-center">No matching staff</div> : filtered.map(o => (
-            <label key={o.value} className="flex items-center gap-3 p-2 hover:bg-slate-700 rounded cursor-pointer text-[13px] text-slate-200">
-              <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(o.value)} className="rounded border-slate-500 bg-slate-900 text-blue-500 w-4 h-4" />
+            <label key={o.value} className="flex items-center gap-3 p-2.5 hover:bg-slate-700 rounded-lg cursor-pointer text-sm text-slate-200">
+              <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(o.value)} className="rounded border-slate-500 bg-slate-900 text-emerald-500 w-4 h-4" />
               <span className="truncate">{o.label}</span>
             </label>
           ))}
@@ -42,6 +47,7 @@ function MultiSelect({ options, selected, onChange, placeholder }: { options: {v
   );
 }
 
+// ── Reusable Searchable Single Select ──
 function SingleSelect({ options, value, onChange, placeholder }: { options: {value: string, label: string}[], value: string | null, onChange: (v: string) => void, placeholder: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -58,17 +64,17 @@ function SingleSelect({ options, value, onChange, placeholder }: { options: {val
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="w-full text-left truncate px-4 py-2 rounded-lg border border-slate-600 bg-slate-800 text-[13px] text-slate-200" onClick={() => setOpen(!open)}>
+      <button type="button" className="w-full text-left truncate px-4 py-3 rounded-lg border border-slate-600 bg-slate-800 text-sm text-slate-200 min-h-[44px] hover:border-slate-500 transition-colors" onClick={() => setOpen(!open)}>
         {selectedLabel ? <span className="text-slate-200">{selectedLabel}</span> : <span className="text-slate-400">{placeholder}</span>}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-2xl z-50 p-2 block">
-          <input type="text" placeholder="Search staff..." className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2 rounded mb-2 text-sm focus:outline-none" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-80 overflow-y-auto bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 p-2 block">
+          <input type="text" placeholder="Search staff..." className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2.5 rounded-lg mb-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
           {filtered.length === 0 ? <div className="text-sm text-slate-500 p-2 text-center">No matching staff</div> : (
             <>
-              <div className="p-2 hover:bg-slate-700 rounded cursor-pointer text-[13px] text-slate-400 italic mb-1" onClick={() => { onChange(''); setOpen(false); setQuery(''); }}>-- Clear Selection --</div>
+              <div className="p-2.5 hover:bg-slate-700 rounded-lg cursor-pointer text-sm text-slate-400 italic mb-1" onClick={() => { onChange(''); setOpen(false); setQuery(''); }}>-- Clear --</div>
               {filtered.map(o => (
-                <div key={o.value} className={`p-2 hover:bg-slate-700 rounded cursor-pointer text-[13px] ${o.value === value ? 'bg-blue-500/20 text-blue-400' : 'text-slate-200'}`} onClick={() => { onChange(o.value); setOpen(false); setQuery(''); }}>{o.label}</div>
+                <div key={o.value} className={`p-2.5 hover:bg-slate-700 rounded-lg cursor-pointer text-sm ${o.value === value ? 'bg-emerald-500/20 text-emerald-400 font-medium' : 'text-slate-200'}`} onClick={() => { onChange(o.value); setOpen(false); setQuery(''); }}>{o.label}</div>
               ))}
             </>
           )}
@@ -79,12 +85,22 @@ function SingleSelect({ options, value, onChange, placeholder }: { options: {val
 }
 
 export default function OTEntryPage() {
+  const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  // Selectors
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDept, setSelectedDept] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+
+  const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
+  // OT Data
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [cases, setCases] = useState<Partial<OTCase>[]>([]);
   const [addons, setAddons] = useState<OTMonthlyAddon[]>([]);
   
@@ -92,9 +108,6 @@ export default function OTEntryPage() {
   const [addonStaffMap, setAddonStaffMap] = useState<Record<string, Staff[]>>({});
   const [incomesMap, setIncomesMap] = useState<Record<string, DailyIncome[]>>({});
   const [leavesList, setLeavesList] = useState<StaffLeave[]>([]);
-
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const [monthStr, setMonthStr] = useState(currentMonth);
 
   // Global Headers
   const [gDocPct, setGDocPct] = useState<number>(0);
@@ -105,31 +118,55 @@ export default function OTEntryPage() {
   const [gParamPct, setGParamPct] = useState<number>(0);
   const [gParamMode, setGParamMode] = useState<'group' | 'individual'>('group');
 
-  useEffect(() => {
-    fetchData();
-  }, [monthStr]);
+  // Filter departments to only OT-allowed
+  const otDepartments = useMemo(() => 
+    departments.filter(d => OT_ALLOWED_DEPARTMENTS.includes(d.name.toLowerCase().trim())),
+  [departments]);
 
-  const fetchData = async () => {
+  const selectedDeptName = departments.find(d => d.id === selectedDept)?.name || '';
+  const isAllowedDept = selectedDept && otDepartments.some(d => d.id === selectedDept);
+
+  // Fetch departments on mount
+  useEffect(() => {
+    const fetchDepts = async () => {
+      try {
+        const res = await fetch('/api/departments');
+        const data = await res.json();
+        const active = data.filter((d: Department) => d.is_active);
+        setDepartments(active);
+        setAllDepartments(active);
+      } catch {
+        addToast('error', 'Failed to fetch departments');
+      }
+      setLoading(false);
+    };
+    fetchDepts();
+  }, []);
+
+  // Fetch data when month + department change
+  const fetchData = useCallback(async () => {
+    if (!selectedDept || !isAllowedDept) return;
     setLoading(true); setError(null);
     try {
-      const [staffRes, casesRes, deptsRes, addonsRes, leavesRes] = await Promise.all([
+      const [staffRes, casesRes, addonsRes, leavesRes] = await Promise.all([
         fetch('/api/staff'),
-        fetch(`/api/ot-cases?month=${monthStr}`),
-        fetch('/api/departments'),
-        fetch(`/api/ot-monthly-addons?month=${monthStr}`),
+        fetch(`/api/ot-cases?month=${monthStr}&department_id=${selectedDept}`),
+        fetch(`/api/ot-monthly-addons?month=${monthStr}&department_id=${selectedDept}`),
         fetch(`/api/leaves?month=${monthStr}`)
       ]);
       
       const stData = await staffRes.json();
       setStaffList(stData.filter((s: Staff) => s.is_active));
-      
-      const dData = await deptsRes.json();
-      setDepartments(dData);
 
       const cData = await casesRes.json();
-      if(cData.length > 0) {
-        setCases(cData);
-        // Reverse look up global headers from first valid row to ease user UX.
+      if (Array.isArray(cData) && cData.length > 0) {
+        // Convert dates from ISO to DD-MM-YYYY for display
+        const displayCases = cData.map((c: any) => ({
+          ...c,
+          date: c.date ? isoToDisplay(c.date) : ''
+        }));
+        setCases(displayCases);
+        // Restore global headers from first valid row
         const r = cData[0];
         setGDocPct(r.doctor_pct || 0);
         setGADocPct(r.assist_doctor_pct || 0);
@@ -139,7 +176,7 @@ export default function OTEntryPage() {
         setGParamPct(r.paramedical_pct || 0);
         setGParamMode(r.paramedical_mode || 'group');
       } else {
-        setCases([createEmptyCase(`${monthStr}-01`)]);
+        setCases([createEmptyCase(`01-${String(month).padStart(2, '0')}-${year}`)]);
       }
 
       setLeavesList(await leavesRes.json());
@@ -149,7 +186,7 @@ export default function OTEntryPage() {
       setAddons(loadedAddons);
 
       // Load Addon contexts
-      const addonDeptIds = [...new Set(loadedAddons.map((a:any) => a.addon_department_id))].filter(Boolean);
+      const addonDeptIds = [...new Set(loadedAddons.map((a: any) => a.addon_department_id))].filter(Boolean);
       
       const aRulesMap: Record<string, DepartmentRule[]> = {};
       const aStaffMap: Record<string, Staff[]> = {};
@@ -171,9 +208,51 @@ export default function OTEntryPage() {
 
     } catch (err: any) {
       setError(err.message);
+      addToast('error', `Failed to load data: ${err.message}`);
     } finally {
       setLoading(false);
     }
+  }, [selectedDept, monthStr, isAllowedDept]);
+
+  useEffect(() => { if (selectedDept && isAllowedDept) fetchData(); }, [fetchData]);
+
+  // ── Date Utilities ──
+  const isoToDisplay = (isoDate: string): string => {
+    if (!isoDate) return '';
+    const parts = isoDate.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return isoDate;
+  };
+
+  const displayToIso = (displayDate: string): string => {
+    if (!displayDate) return '';
+    const parts = displayDate.split(/[-/]/);
+    if (parts.length !== 3) return displayDate;
+    if (parts[0].length === 4) return displayDate; // Already ISO
+    let yr = parseInt(parts[2]);
+    if (yr < 100) yr += 2000;
+    return `${yr}-${String(parseInt(parts[1])).padStart(2, '0')}-${String(parseInt(parts[0])).padStart(2, '0')}`;
+  };
+
+  const parseDisplayDate = (str: string): Date | null => {
+    if (!str) return null;
+    const parts = str.split(/[-/]/);
+    if (parts.length !== 3) return null;
+    let d: number, m: number, y: number;
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]);
+    } else {
+      d = parseInt(parts[0]); m = parseInt(parts[1]); y = parseInt(parts[2]);
+      if (y < 100) y += 2000;
+    }
+    const date = new Date(y, m - 1, d);
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  const formatDisplay = (d: Date): string => {
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   };
 
   const createEmptyCase = (dateStr: string): Partial<OTCase> => ({
@@ -194,7 +273,7 @@ export default function OTEntryPage() {
     paramedical_mode: gParamMode
   });
 
-  // Global Change handlers
+  // ── Global Change Handlers ──
   const updateGlobal = (field: string, val: any) => {
     if(field === 'gDocPct') { setGDocPct(val); updateAllCases('doctor_pct', val); }
     if(field === 'gADocPct') { setGADocPct(val); updateAllCases('assist_doctor_pct', val); }
@@ -209,90 +288,99 @@ export default function OTEntryPage() {
     setCases(prev => prev.map(c => ({ ...c, [field]: value })));
   };
 
-
-  const parseUserDate = (str: string) => {
-    if(!str) return null;
-    const parts = str.split(/[-/]/);
-    if(parts.length !== 3) return null;
-    let [p1, p2, p3] = parts;
-    if(p1.length === 4) return new Date(parseInt(p1), parseInt(p2)-1, parseInt(p3));
-    let year = parseInt(p3);
-    if (year < 100) year += 2000;
-    return new Date(year, parseInt(p2)-1, parseInt(p1));
-  };
-
-  const formatUserDate = (d: Date, template: string) => {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth()+1).padStart(2, '0');
-    const year = d.getFullYear();
-    const shortYear = String(year).slice(2);
-    if (template.split(/[-/]/)[0]?.length === 4) return `${year}-${month}-${day}`;
-    if (template.includes('/') || template.split('-')[2]?.length === 2) {
-      return `${d.getDate()}-${d.getMonth()+1}-${shortYear}`;
-    }
-    return `${day}-${month}-${year}`;
-  };
-
+  // ── Date Cascade ──
   const handleDateCascade = (id: string, newDateText: string) => {
     setCases(prev => {
-       const next = [...prev];
-       const index = next.findIndex(c => c.id === id);
-       if (index === -1) return prev;
-       next[index] = {...next[index], date: newDateText};
-       
-       let parsedDate = parseUserDate(newDateText);
-       if (parsedDate && !isNaN(parsedDate.getTime())) {
-          for (let i = index + 1; i < next.length; i++) {
-             parsedDate.setDate(parsedDate.getDate() + 1);
-             next[i] = {...next[i], date: formatUserDate(parsedDate, newDateText)};
-          }
-       }
-       return next;
+      const next = [...prev];
+      const index = next.findIndex(c => c.id === id);
+      if (index === -1) return prev;
+      next[index] = { ...next[index], date: newDateText };
+      
+      const parsed = parseDisplayDate(newDateText);
+      if (parsed) {
+        for (let i = index + 1; i < next.length; i++) {
+          parsed.setDate(parsed.getDate() + 1);
+          next[i] = { ...next[i], date: formatDisplay(parsed) };
+        }
+      }
+      return next;
     });
   };
 
   const addRow = () => {
-    let nextDate = `${monthStr}-01`;
+    let nextDate = `01-${String(month).padStart(2, '0')}-${year}`;
     if (cases.length > 0) {
       const lastDate = cases[cases.length - 1].date;
       if (lastDate) {
-        let parsed = parseUserDate(lastDate);
-        if (parsed && !isNaN(parsed.getTime())) {
-           parsed.setDate(parsed.getDate() + 1);
-           nextDate = formatUserDate(parsed, lastDate);
+        const parsed = parseDisplayDate(lastDate);
+        if (parsed) {
+          parsed.setDate(parsed.getDate() + 1);
+          nextDate = formatDisplay(parsed);
         }
       }
     }
     setCases(prev => [...prev, createEmptyCase(nextDate)]);
   };
 
+  // ── Save Handler ──
   const handleSave = async () => {
+    if (!selectedDept || !isAllowedDept) return;
     setSaving(true); setError(null);
     try {
+      // Convert display dates to ISO for saving
       const payload = cases.map(c => {
-         let isoDate = c.date;
-         const d = parseUserDate(c.date || '');
-         if (d && !isNaN(d.getTime())) isoDate = d.toISOString().split('T')[0];
-         return {
-           ...c,
-           date: isoDate,
-           id: c.id?.startsWith('temp_') ? undefined : c.id
-         };
+        const isoDate = displayToIso(c.date || '');
+        return {
+          ...c,
+          date: isoDate,
+          id: c.id?.startsWith('temp_') ? undefined : c.id
+        };
       });
-      await fetch('/api/ot-cases', { method: 'POST', body: JSON.stringify({ month: monthStr, cases: payload }) });
-      await fetch('/api/ot-monthly-addons', { method: 'POST', body: JSON.stringify({ month: monthStr, addons }) });
+
+      const casesRes = await fetch('/api/ot-cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: monthStr, department_id: selectedDept, cases: payload })
+      });
+      
+      if (!casesRes.ok) {
+        const err = await casesRes.json();
+        throw new Error(err.error || 'Failed to save OT cases');
+      }
+
+      const addonsRes = await fetch('/api/ot-monthly-addons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: monthStr,
+          department_id: selectedDept,
+          addons: addons.filter(a => a.addon_department_id && a.percentage > 0).map(a => ({
+            addon_department_id: a.addon_department_id,
+            percentage: a.percentage,
+            attendance_rule: a.attendance_rule || 'none',
+            applied_rules: a.applied_rules || []
+          }))
+        })
+      });
+
+      if (!addonsRes.ok) {
+        const err = await addonsRes.json();
+        throw new Error(err.error || 'Failed to save add-ons');
+      }
+
+      addToast('success', 'OT Entry saved successfully!');
       await fetchData();
     } catch (err: any) {
       setError(err.message);
+      addToast('error', err.message || 'Failed to save');
     } finally {
       setSaving(false);
     }
   };
 
-
-  // Addon Helpers
+  // ── Addon Dependencies ──
   const fetchAddonDeps = async (id: string) => {
-    if(!addonRulesMap[id]) {
+    if (!addonRulesMap[id]) {
       const [rRes, sRes, iRes] = await Promise.all([
         fetch(`/api/rules?department_id=${id}`),
         fetch(`/api/staff?department_id=${id}`),
@@ -301,14 +389,20 @@ export default function OTEntryPage() {
       const rData = rRes.ok ? await rRes.json() : [];
       const sData = sRes.ok ? await sRes.json() : [];
       const iData = iRes.ok ? await iRes.json() : [];
-      setAddonRulesMap(prev => ({...prev, [id]: rData}));
-      setAddonStaffMap(prev => ({...prev, [id]: sData}));
-      setIncomesMap(prev => ({...prev, [id]: iData}));
+      setAddonRulesMap(prev => ({ ...prev, [id]: rData }));
+      setAddonStaffMap(prev => ({ ...prev, [id]: sData }));
+      setIncomesMap(prev => ({ ...prev, [id]: iData }));
     }
   };
 
-  // CALCULATION LOGIC
-  const { otBreakdown, addonBreakdown } = useMemo(() => {
+  // ── Case Helpers ──
+  const updateCase = (id: string, field: keyof OTCase, value: any) => setCases(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  const duplicateRow = (c: Partial<OTCase>) => setCases(prev => [...prev, { ...c, id: `temp_${Date.now()}_${Math.random()}` }]);
+  const deleteRow = (id: string) => setCases(prev => prev.filter(c => c.id !== id));
+  const staffOpts = staffList.map(s => ({ value: s.id, label: s.name }));
+
+  // ── OT Calculation Preview ──
+  const { otBreakdown, addonBreakdown, totalOTAmount } = useMemo(() => {
     const otShares: Record<string, { name: string; role: string; amount: number }> = {};
     const getName = (id: string) => staffList.find(s => s.id === id)?.name || 'Unknown';
     const getRole = (id: string) => staffList.find(s => s.id === id)?.role || 'Unknown';
@@ -330,16 +424,16 @@ export default function OTEntryPage() {
         const perPerson = mode === 'group' ? totalShare / ids.length : totalShare;
         ids.forEach(id => addShare(id, perPerson, otShares));
       };
-      processRole(c.assist_doctor_ids, c.assist_doctor_pct, c.assist_doctor_mode!);
-      processRole(c.assist_nurse_ids, c.assist_nurse_pct, c.assist_nurse_mode!);
-      processRole(c.paramedical_ids, c.paramedical_ids, c.paramedical_mode!);
+      processRole(c.assist_doctor_ids || [], c.assist_doctor_pct, c.assist_doctor_mode!);
+      processRole(c.assist_nurse_ids || [], c.assist_nurse_pct, c.assist_nurse_mode!);
+      processRole(c.paramedical_ids || [], c.paramedical_pct, c.paramedical_mode!);
     });
 
     const addonOut: any[] = [];
     addons.filter(a => a.addon_department_id && a.percentage > 0).forEach(addon => {
-      const aDept = departments.find(d => d.id === addon.addon_department_id);
+      const aDept = allDepartments.find(d => d.id === addon.addon_department_id);
       const pool = Math.round(totalOtSum * (addon.percentage / 100) * 100) / 100;
-      const activeRules = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : (addonRulesMap[addon.addon_department_id] || []).map(r=>r.id);
+      const activeRules = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : (addonRulesMap[addon.addon_department_id] || []).map(r => r.id);
       const aStaff = addonStaffMap[addon.addon_department_id] || [];
       const incomes = incomesMap[addon.addon_department_id] || [];
       const attRule = addon.attendance_rule || 'none';
@@ -347,15 +441,15 @@ export default function OTEntryPage() {
       const rows: any[] = [];
       aStaff.forEach(s => {
         const rule = (addonRulesMap[addon.addon_department_id] || []).find(r => activeRules.includes(r.id) && r.role.toUpperCase() === s.role.toUpperCase());
-        if(!rule) return;
+        if (!rule) return;
         const pct = s.department_percentages?.[addon.addon_department_id] ? parseFloat(s.department_percentages[addon.addon_department_id]) : parseFloat(rule.percentage) || 0;
         let absentDays = 0, workingDays = incomes.length;
-        if(attRule === 'daily') {
+        if (attRule === 'daily') {
           workingDays = incomes.filter(inc => inc.present_staff_ids?.includes(s.id)).length;
           absentDays = incomes.length - workingDays;
-        } else if(attRule === 'monthly') {
+        } else if (attRule === 'monthly') {
           absentDays = leavesList.filter(l => l.staff_id === s.id && l.leave_type === 'OFF').length;
-          workingDays = Math.max(0, new Date(parseInt(monthStr.split('-')[0]), parseInt(monthStr.split('-')[1]), 0).getDate() - absentDays);
+          workingDays = Math.max(0, new Date(year, month, 0).getDate() - absentDays);
         }
         rows.push({ staff: s, pct, distType: rule.distribution_type, poolTotal: pool, absentDays, workingDays });
       });
@@ -365,252 +459,377 @@ export default function OTEntryPage() {
         const groupPctSum = groupStaff.reduce((ss, x) => ss + x.pct, 0) || 1;
         const baseShare = r.distType === 'individual' ? (pool * (r.pct / 100)) : (pool * (r.pct / 100)) * (r.pct / groupPctSum);
         let finalShare = baseShare;
-        if(attRule === 'daily') finalShare = incomes.length ? (baseShare / incomes.length) * r.workingDays : 0;
-        if(attRule === 'monthly') finalShare = (baseShare / (r.workingDays + r.absentDays || 30)) * r.workingDays;
+        if (attRule === 'daily') finalShare = incomes.length ? (baseShare / incomes.length) * r.workingDays : 0;
+        if (attRule === 'monthly') finalShare = (baseShare / (r.workingDays + r.absentDays || 30)) * r.workingDays;
         
         addonOut.push({ deptName: aDept?.name, staffName: r.staff.name, role: r.staff.role, amount: finalShare });
       });
     });
 
-    return { otBreakdown: Object.values(otShares).sort((a,b) => b.amount - a.amount), addonBreakdown: addonOut.sort((a,b) => b.amount - a.amount) };
-  }, [cases, addons, staffList, addonRulesMap, addonStaffMap, incomesMap, leavesList, monthStr, departments]);
+    return {
+      otBreakdown: Object.values(otShares).sort((a, b) => b.amount - a.amount),
+      addonBreakdown: addonOut.sort((a, b) => b.amount - a.amount),
+      totalOTAmount: totalOtSum,
+    };
+  }, [cases, addons, staffList, addonRulesMap, addonStaffMap, incomesMap, leavesList, monthStr, allDepartments]);
 
-  const exportExcel = () => {
-    const wb = XLSX.utils.book_new();
-    const wsOT = XLSX.utils.json_to_sheet(otBreakdown);
-    const wsAddon = XLSX.utils.json_to_sheet(addonBreakdown);
-    XLSX.utils.book_append_sheet(wb, wsOT, 'OT Shares');
-    if(addonBreakdown.length) XLSX.utils.book_append_sheet(wb, wsAddon, 'Addon Shares');
-    XLSX.writeFile(wb, `OT_Report_${monthStr}.xlsx`);
-  };
-
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    doc.text(`OT Report - ${monthStr}`, 14, 15);
-    autoTable(doc, { head: [['Staff Name', 'Role', 'Amount (Rs)']], body: otBreakdown.map(r => [r.name, r.role, r.amount.toFixed(2)]), startY: 20 });
-    if(addonBreakdown.length) {
-      doc.addPage();
-      doc.text(`Addon Distributions - ${monthStr}`, 14, 15);
-      autoTable(doc, { head: [['Department', 'Staff', 'Role', 'Amount (Rs)']], body: addonBreakdown.map(r => [r.deptName, r.staffName, r.role, r.amount.toFixed(2)]), startY: 20 });
-    }
-    doc.save(`OT_Report_${monthStr}.pdf`);
-  };
-
-  const updateCase = (id: string, field: keyof OTCase, value: any) => setCases(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
-  const duplicateRow = (c: Partial<OTCase>) => setCases(prev => [...prev, { ...c, id: `temp_${Date.now()}_${Math.random()}` }]);
-  const deleteRow = (id: string) => setCases(prev => prev.filter(c => c.id !== id));
-  const staffOpts = staffList.map(s => ({ value: s.id, label: s.name }));
-
-  if (loading) return <div className="p-8 text-center text-slate-400">Loading OT Ecosystem...</div>;
+  // ── Initial Loading ──
+  if (loading && departments.length === 0) {
+    return <div className="p-8 text-center text-slate-400">Loading OT System...</div>;
+  }
 
   return (
     <div className="pb-20">
+      {/* ── Page Header ── */}
       <div className="page-header flex justify-between items-end mb-6">
         <div>
-          <h1 className="page-title text-2xl font-bold flex items-center gap-2"><Activity className="text-emerald-500" /> OT Entry & Add-ons</h1>
-          <p className="text-sm text-slate-400 mt-1">Independent OT surgery case tracking & Global-bound add-on configurations.</p>
+          <h1 className="page-title text-2xl font-bold flex items-center gap-2"><Stethoscope className="text-emerald-500" /> OT Entry</h1>
+          <p className="text-sm text-slate-400 mt-1">Surgery case tracking — Delivery &amp; General Surgery only</p>
         </div>
-        <div className="flex items-center gap-3">
-          <input type="month" value={monthStr} onChange={(e) => setMonthStr(e.target.value)} className="text-input w-40" />
-          <button onClick={exportExcel} className="btn bg-green-600 hover:bg-green-700"><FileSpreadsheet size={16} className="mr-2"/> Excel</button>
-          <button onClick={exportPDF} className="btn bg-red-600 hover:bg-red-700"><FileText size={16} className="mr-2"/> PDF</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary"><Save size={16} className="mr-2" /> {saving ? 'Saving...' : 'Save All'}</button>
-        </div>
-      </div>
-      {error && <div className="mb-4 p-4 border border-red-500/30 bg-red-500/10 rounded-lg text-red-400 text-sm">{error}</div>}
-
-      <div className="glass-card mb-8 overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '2200px' }}>
-            <thead>
-              <tr className="bg-slate-800/80 border-b border-slate-700">
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Date</th>
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Case Type</th>
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase">Amount (₹)</th>
-                
-                <th className="p-3 text-xs font-semibold text-emerald-400 uppercase border-l border-slate-700 bg-emerald-500/10">Doctor (Main)</th>
-                <th className="p-3 text-xs font-semibold text-emerald-400 uppercase border-r border-slate-700 bg-emerald-500/10 text-center">
-                  Global %
-                  <input type="number" value={gDocPct} onChange={e => updateGlobal('gDocPct', parseFloat(e.target.value)||0)} className="w-12 ml-2 bg-slate-900 border border-slate-600 rounded text-center px-1 text-slate-200"/>
-                </th>
-                
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase border-l border-slate-700 bg-blue-500/10">Assist Doctor</th>
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase bg-blue-500/10 text-center">
-                  Global %
-                  <input type="number" value={gADocPct} onChange={e => updateGlobal('gADocPct', parseFloat(e.target.value)||0)} className="w-12 ml-2 bg-slate-900 border border-slate-600 rounded text-center px-1 text-slate-200"/>
-                </th>
-                <th className="p-3 text-xs font-semibold text-blue-400 uppercase border-r border-slate-700 bg-blue-500/10">
-                  <select value={gADocMode} onChange={e => updateGlobal('gADocMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded px-1 ml-1 text-slate-200"><option value="group">Group</option><option value="individual">Ind</option></select>
-                </th>
-                
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase border-l border-slate-700 bg-purple-500/10">Assist Nurse</th>
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase bg-purple-500/10 text-center">
-                  Global %
-                  <input type="number" value={gANursePct} onChange={e => updateGlobal('gANursePct', parseFloat(e.target.value)||0)} className="w-12 ml-2 bg-slate-900 border border-slate-600 rounded text-center px-1 text-slate-200"/>
-                </th>
-                <th className="p-3 text-xs font-semibold text-purple-400 uppercase border-r border-slate-700 bg-purple-500/10">
-                  <select value={gANurseMode} onChange={e => updateGlobal('gANurseMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded px-1 ml-1 text-slate-200"><option value="group">Group</option><option value="individual">Ind</option></select>
-                </th>
-
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase border-l border-slate-700 bg-orange-500/10">Paramedical</th>
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase bg-orange-500/10 text-center">
-                  Global %
-                  <input type="number" value={gParamPct} onChange={e => updateGlobal('gParamPct', parseFloat(e.target.value)||0)} className="w-12 ml-2 bg-slate-900 border border-slate-600 rounded text-center px-1 text-slate-200"/>
-                </th>
-                <th className="p-3 text-xs font-semibold text-orange-400 uppercase border-r border-slate-700 bg-orange-500/10">
-                  <select value={gParamMode} onChange={e => updateGlobal('gParamMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded px-1 ml-1 text-slate-200"><option value="group">Group</option><option value="individual">Ind</option></select>
-                </th>
-                
-                <th className="p-3 text-xs font-semibold text-slate-400 uppercase text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cases.map((c, i) => (
-                <tr key={c.id || i} className="border-b border-slate-700/50 hover:bg-slate-800/30 transition-colors">
-                  <td className="p-3"><input type="text" placeholder="DD-MM-YYYY" value={c.date || ''} onChange={(e) => handleDateCascade(c.id!, e.target.value)} className="text-input p-2 w-32 text-sm text-center" /></td>
-                  <td className="p-3"><select value={c.case_type || 'Major'} onChange={(e) => updateCase(c.id!, 'case_type', e.target.value)} className="select-field p-2 w-28 text-sm"><option>Major</option><option>Minor</option></select></td>
-                  <td className="p-3"><input type="number" value={c.amount || ''} onChange={(e) => updateCase(c.id!, 'amount', parseFloat(e.target.value))} className="text-input font-bold text-emerald-400 p-2 w-32 text-sm" placeholder="₹0" /></td>
-
-                  <td className="p-3 border-l border-slate-700/50 bg-emerald-500/5 min-w-[200px]"><SingleSelect options={staffOpts} value={c.doctor_id || null} onChange={v => updateCase(c.id!, 'doctor_id', v)} placeholder="Doctor..."/></td>
-                  <td className="p-3 border-r border-slate-700/50 bg-emerald-500/5 text-center text-slate-400">{c.doctor_pct}%</td>
-
-                  <td className="p-3 border-l border-slate-700/50 bg-blue-500/5 min-w-[200px]"><MultiSelect options={staffOpts} selected={c.assist_doctor_ids || []} onChange={v => updateCase(c.id!, 'assist_doctor_ids', v)} placeholder="Docs..."/></td>
-                  <td className="p-3 bg-blue-500/5 text-center text-slate-400">{c.assist_doctor_pct}%</td>
-                  <td className="p-3 border-r border-slate-700/50 bg-blue-500/5 text-slate-400 text-center">{c.assist_doctor_mode}</td>
-
-                  <td className="p-3 border-l border-slate-700/50 bg-purple-500/5 min-w-[200px]"><MultiSelect options={staffOpts} selected={c.assist_nurse_ids || []} onChange={v => updateCase(c.id!, 'assist_nurse_ids', v)} placeholder="Nurses..."/></td>
-                  <td className="p-3 bg-purple-500/5 text-center text-slate-400">{c.assist_nurse_pct}%</td>
-                  <td className="p-3 border-r border-slate-700/50 bg-purple-500/5 text-slate-400 text-center">{c.assist_nurse_mode}</td>
-
-                  <td className="p-3 border-l border-slate-700/50 bg-orange-500/5 min-w-[200px]"><MultiSelect options={staffOpts} selected={c.paramedical_ids || []} onChange={v => updateCase(c.id!, 'paramedical_ids', v)} placeholder="Params..."/></td>
-                  <td className="p-3 bg-orange-500/5 text-center text-slate-400">{c.paramedical_pct}%</td>
-                  <td className="p-3 border-r border-slate-700/50 bg-orange-500/5 text-slate-400 text-center">{c.paramedical_mode}</td>
-
-                  <td className="p-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => duplicateRow(c)} className="p-2 text-slate-400 hover:text-blue-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Duplicate"><Copy size={16}/></button>
-                      <button onClick={() => deleteRow(c.id!)} className="p-2 text-slate-400 hover:text-red-400 bg-slate-800 rounded hover:bg-slate-700 transition" title="Delete"><Trash2 size={16}/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-4 border-t border-slate-700 bg-slate-800/30">
-          <button onClick={addRow} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700"><Plus size={16} className="mr-2" /> Add Case</button>
-        </div>
-      </div>
-
-      {/* Addon Section */}
-      <div className="mb-10">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2"><Settings className="text-indigo-400"/> Add-On Departments</h2>
-          <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [] }])} className="btn text-sm px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300">
-            <Plus size={14} className="mr-2"/> Add Dept Add-On
+        {selectedDept && isAllowedDept && (
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary flex items-center gap-2 px-5 py-2.5 text-sm">
+            <Save size={16} /> {saving ? 'Saving...' : 'Save All'}
           </button>
-        </div>
-
-        {addons.length === 0 ? (
-          <div className="glass-card p-6 text-center text-slate-500 text-sm border-dashed">No Add-Ons configured for OT Sums.</div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {addons.map((addon, aIdx) => {
-              const aRules = addonRulesMap[addon.addon_department_id] || [];
-              const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : aRules.map(r=>r.id);
-              return (
-                <div key={aIdx} className="glass-card p-5 border border-slate-700 relative">
-                  <button onClick={() => setAddons(addons.filter((_, i) => i !== aIdx))} className="absolute top-4 right-4 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={16}/></button>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <label className="field-label">Target Department</label>
-                      <select value={addon.addon_department_id} onChange={e => {
-                        const next = [...addons];
-                        next[aIdx].addon_department_id = e.target.value;
-                        setAddons(next);
-                        if(e.target.value) fetchAddonDeps(e.target.value);
-                      }} className="select-field">
-                        <option value="">Select Department...</option>
-                        {departments.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="field-label">Share Percentage (%)</label>
-                      <input type="number" value={addon.percentage} onChange={e => {
-                        const next = [...addons];
-                        next[aIdx].percentage = parseFloat(e.target.value)||0;
-                        setAddons(next);
-                      }} className="text-input" placeholder="e.g. 10" />
-                    </div>
-                    <div>
-                      <label className="field-label">Global Attendance Rule</label>
-                      <select value={addon.attendance_rule} onChange={e => {
-                        const next = [...addons];
-                        next[aIdx].attendance_rule = e.target.value as any;
-                        setAddons(next);
-                      }} className="select-field">
-                        <option value="none">No Attendance Impact</option>
-                        <option value="monthly">Monthly Global Attendance</option>
-                        <option value="daily">Daily Exact Matches</option>
-                      </select>
-                    </div>
-                  </div>
-                  {addon.addon_department_id && (
-                    <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
-                      <p className="text-xs font-semibold text-slate-400 mb-2">APPLIED ROLES</p>
-                      <div className="flex flex-wrap gap-2">
-                        {aRules.map(rule => {
-                          const isApplied = activeRuleIds.includes(rule.id);
-                          return (
-                            <button key={rule.id} onClick={() => {
-                              const next = [...addons];
-                              next[aIdx].applied_rules = isApplied ? activeRuleIds.filter(id => id !== rule.id) : [...activeRuleIds, rule.id];
-                              setAddons(next);
-                            }} className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${isApplied ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}>
-                              {rule.role}
-                            </button>
-                          );
-                        })}
-                        {aRules.length === 0 && <span className="text-xs text-slate-500 italic">No rules defined in dept.</span>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Users size={18} className="text-blue-400" /> Core OT Preview</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {otBreakdown.map((row, i) => (
-              <div key={i} className="glass-card p-4 flex flex-col gap-1 border border-slate-700">
-                <span className="text-slate-200 font-semibold text-sm">{row.name}</span>
-                <span className="text-slate-400 text-xs uppercase tracking-wider">{row.role}</span>
-                <span className="text-emerald-400 font-bold text-lg mt-1">₹{row.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              </div>
-            ))}
-            {otBreakdown.length === 0 && <span className="text-slate-500 text-sm">No portions calculated.</span>}
+      {/* ── Month + Department Selector ── */}
+      <div className="glass-card mb-6" style={{ padding: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+          <div>
+            <label className="form-label text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Department</label>
+            <select
+              className="select-field w-full"
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+              style={{ minHeight: '44px', fontSize: '14px' }}
+            >
+              <option value="">Select Department...</option>
+              {otDepartments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
           </div>
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Settings size={18} className="text-indigo-400" /> Add-On Preview</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {addonBreakdown.map((row, i) => (
-              <div key={i} className="glass-card p-4 flex flex-col gap-1 border border-slate-700">
-                <span className="text-slate-200 font-semibold text-sm">{row.staffName} <span className="text-xs text-indigo-400 ml-1">({row.deptName})</span></span>
-                <span className="text-slate-400 text-xs uppercase tracking-wider">{row.role}</span>
-                <span className="text-indigo-400 font-bold text-lg mt-1">₹{row.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              </div>
-            ))}
-            {addonBreakdown.length === 0 && <span className="text-slate-500 text-sm">No Add-on portions calculated.</span>}
+          <div>
+            <label className="form-label text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Year</label>
+            <select className="select-field w-full" value={year} onChange={(e) => setYear(parseInt(e.target.value))} style={{ minHeight: '44px', fontSize: '14px' }}>
+              {[2024, 2025, 2026, 2027].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Month</label>
+            <select className="select-field w-full" value={month} onChange={(e) => setMonth(parseInt(e.target.value))} style={{ minHeight: '44px', fontSize: '14px' }}>
+              {MONTHS.map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
 
+      {/* ── Error: Not Allowed ── */}
+      {selectedDept && !isAllowedDept && (
+        <div className="glass-card mb-6 p-6 border-2 border-red-500/30" style={{ background: 'rgba(239, 68, 68, 0.08)' }}>
+          <div className="flex items-center gap-3 text-red-400">
+            <AlertTriangle size={24} />
+            <div>
+              <p className="font-bold text-lg">This department is not allowed in OT Entry</p>
+              <p className="text-sm text-red-400/70 mt-1">OT Entry is only available for Delivery and General Surgery departments.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── No Department Selected ── */}
+      {!selectedDept && (
+        <div className="glass-card p-12 text-center">
+          <Stethoscope size={48} className="mx-auto mb-4 text-slate-600" />
+          <p className="text-lg font-semibold text-slate-400">Select Month &amp; Department</p>
+          <p className="text-sm text-slate-500 mt-2">Choose a month and department to start entering OT cases.</p>
+        </div>
+      )}
+
+      {error && <div className="mb-4 p-4 border border-red-500/30 bg-red-500/10 rounded-lg text-red-400 text-sm">{error}</div>}
+
+      {/* ── Only show content when department is valid ── */}
+      {selectedDept && isAllowedDept && !loading && (
+        <>
+          {/* ── Summary Bar ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="glass-card p-4 border border-slate-700">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total OT Amount</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">₹{totalOTAmount.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="glass-card p-4 border border-slate-700">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Cases</p>
+              <p className="text-2xl font-bold text-blue-400 mt-1">{cases.length}</p>
+            </div>
+            <div className="glass-card p-4 border border-slate-700">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Department</p>
+              <p className="text-2xl font-bold text-purple-400 mt-1">{selectedDeptName}</p>
+            </div>
+          </div>
+
+          {/* ── OT Cases Table ── */}
+          <div className="glass-card mb-8 overflow-hidden p-0">
+            <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <table className="w-full text-left border-collapse" style={{ minWidth: '1800px' }}>
+                <thead>
+                  <tr className="bg-slate-800/80 border-b border-slate-700">
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider" style={{ minWidth: '140px' }}>Date</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider" style={{ minWidth: '120px' }}>Case Type</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider" style={{ minWidth: '150px' }}>Amount (₹)</th>
+                    
+                    {/* Doctor */}
+                    <th className="p-4 text-xs font-bold text-emerald-400 uppercase tracking-wider border-l-2 border-emerald-500/30 bg-emerald-500/5" style={{ minWidth: '220px' }}>
+                      Doctor (Main)
+                    </th>
+                    <th className="p-4 text-xs font-bold text-emerald-400 uppercase tracking-wider border-r-2 border-emerald-500/30 bg-emerald-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Global %</div>
+                      <input type="number" value={gDocPct} onChange={e => updateGlobal('gDocPct', parseFloat(e.target.value) || 0)} className="w-16 bg-slate-900 border border-slate-600 rounded-lg text-center px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500/40 focus:outline-none" />
+                    </th>
+                    
+                    {/* Assist Doctor */}
+                    <th className="p-4 text-xs font-bold text-blue-400 uppercase tracking-wider border-l-2 border-blue-500/30 bg-blue-500/5" style={{ minWidth: '220px' }}>
+                      Assist Doctor
+                    </th>
+                    <th className="p-4 text-xs font-bold text-blue-400 uppercase tracking-wider bg-blue-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Global %</div>
+                      <input type="number" value={gADocPct} onChange={e => updateGlobal('gADocPct', parseFloat(e.target.value) || 0)} className="w-16 bg-slate-900 border border-slate-600 rounded-lg text-center px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/40 focus:outline-none" />
+                    </th>
+                    <th className="p-4 text-xs font-bold text-blue-400 uppercase tracking-wider border-r-2 border-blue-500/30 bg-blue-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Mode</div>
+                      <select value={gADocMode} onChange={e => updateGlobal('gADocMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-blue-500/40 focus:outline-none">
+                        <option value="group">Group</option><option value="individual">Individual</option>
+                      </select>
+                    </th>
+                    
+                    {/* Assist Nurse */}
+                    <th className="p-4 text-xs font-bold text-purple-400 uppercase tracking-wider border-l-2 border-purple-500/30 bg-purple-500/5" style={{ minWidth: '220px' }}>
+                      Assist Nurse
+                    </th>
+                    <th className="p-4 text-xs font-bold text-purple-400 uppercase tracking-wider bg-purple-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Global %</div>
+                      <input type="number" value={gANursePct} onChange={e => updateGlobal('gANursePct', parseFloat(e.target.value) || 0)} className="w-16 bg-slate-900 border border-slate-600 rounded-lg text-center px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500/40 focus:outline-none" />
+                    </th>
+                    <th className="p-4 text-xs font-bold text-purple-400 uppercase tracking-wider border-r-2 border-purple-500/30 bg-purple-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Mode</div>
+                      <select value={gANurseMode} onChange={e => updateGlobal('gANurseMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500/40 focus:outline-none">
+                        <option value="group">Group</option><option value="individual">Individual</option>
+                      </select>
+                    </th>
+
+                    {/* Paramedical */}
+                    <th className="p-4 text-xs font-bold text-orange-400 uppercase tracking-wider border-l-2 border-orange-500/30 bg-orange-500/5" style={{ minWidth: '220px' }}>
+                      Paramedical
+                    </th>
+                    <th className="p-4 text-xs font-bold text-orange-400 uppercase tracking-wider bg-orange-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Global %</div>
+                      <input type="number" value={gParamPct} onChange={e => updateGlobal('gParamPct', parseFloat(e.target.value) || 0)} className="w-16 bg-slate-900 border border-slate-600 rounded-lg text-center px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-orange-500/40 focus:outline-none" />
+                    </th>
+                    <th className="p-4 text-xs font-bold text-orange-400 uppercase tracking-wider border-r-2 border-orange-500/30 bg-orange-500/5 text-center" style={{ minWidth: '100px' }}>
+                      <div className="text-[10px] mb-1">Mode</div>
+                      <select value={gParamMode} onChange={e => updateGlobal('gParamMode', e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-sm text-slate-200 focus:ring-2 focus:ring-orange-500/40 focus:outline-none">
+                        <option value="group">Group</option><option value="individual">Individual</option>
+                      </select>
+                    </th>
+                    
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center" style={{ minWidth: '100px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cases.map((c, i) => (
+                    <tr key={c.id || i} className="border-b border-slate-700/50 hover:bg-slate-800/40 transition-colors">
+                      <td className="p-3">
+                        <input
+                          type="text"
+                          placeholder="DD-MM-YYYY"
+                          value={c.date || ''}
+                          onChange={(e) => handleDateCascade(c.id!, e.target.value)}
+                          className="text-input w-full text-center font-mono"
+                          style={{ minHeight: '44px', fontSize: '14px', minWidth: '130px' }}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={c.case_type || 'Major'}
+                          onChange={(e) => updateCase(c.id!, 'case_type', e.target.value)}
+                          className="select-field w-full"
+                          style={{ minHeight: '44px', fontSize: '14px' }}
+                        >
+                          <option>Major</option><option>Minor</option>
+                        </select>
+                      </td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          value={c.amount || ''}
+                          onChange={(e) => updateCase(c.id!, 'amount', parseFloat(e.target.value))}
+                          className="text-input font-bold text-emerald-400 w-full"
+                          placeholder="₹0"
+                          style={{ minHeight: '44px', fontSize: '15px', minWidth: '130px' }}
+                        />
+                      </td>
+
+                      <td className="p-3 border-l-2 border-emerald-500/20 bg-emerald-500/[0.02]" style={{ minWidth: '220px' }}>
+                        <SingleSelect options={staffOpts} value={c.doctor_id || null} onChange={v => updateCase(c.id!, 'doctor_id', v)} placeholder="Select Doctor..." />
+                      </td>
+                      <td className="p-3 border-r-2 border-emerald-500/20 bg-emerald-500/[0.02] text-center text-slate-400 font-medium">{c.doctor_pct}%</td>
+
+                      <td className="p-3 border-l-2 border-blue-500/20 bg-blue-500/[0.02]" style={{ minWidth: '220px' }}>
+                        <MultiSelect options={staffOpts} selected={c.assist_doctor_ids || []} onChange={v => updateCase(c.id!, 'assist_doctor_ids', v)} placeholder="Select Doctors..." />
+                      </td>
+                      <td className="p-3 bg-blue-500/[0.02] text-center text-slate-400 font-medium">{c.assist_doctor_pct}%</td>
+                      <td className="p-3 border-r-2 border-blue-500/20 bg-blue-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.assist_doctor_mode}</td>
+
+                      <td className="p-3 border-l-2 border-purple-500/20 bg-purple-500/[0.02]" style={{ minWidth: '220px' }}>
+                        <MultiSelect options={staffOpts} selected={c.assist_nurse_ids || []} onChange={v => updateCase(c.id!, 'assist_nurse_ids', v)} placeholder="Select Nurses..." />
+                      </td>
+                      <td className="p-3 bg-purple-500/[0.02] text-center text-slate-400 font-medium">{c.assist_nurse_pct}%</td>
+                      <td className="p-3 border-r-2 border-purple-500/20 bg-purple-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.assist_nurse_mode}</td>
+
+                      <td className="p-3 border-l-2 border-orange-500/20 bg-orange-500/[0.02]" style={{ minWidth: '220px' }}>
+                        <MultiSelect options={staffOpts} selected={c.paramedical_ids || []} onChange={v => updateCase(c.id!, 'paramedical_ids', v)} placeholder="Select Paramedical..." />
+                      </td>
+                      <td className="p-3 bg-orange-500/[0.02] text-center text-slate-400 font-medium">{c.paramedical_pct}%</td>
+                      <td className="p-3 border-r-2 border-orange-500/20 bg-orange-500/[0.02] text-slate-400 text-center text-xs font-medium uppercase">{c.paramedical_mode}</td>
+
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => duplicateRow(c)} className="p-2.5 text-slate-400 hover:text-blue-400 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Duplicate">
+                            <Copy size={16} />
+                          </button>
+                          <button onClick={() => deleteRow(c.id!)} className="p-2.5 text-slate-400 hover:text-red-400 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Delete">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t border-slate-700 bg-slate-800/30 flex items-center gap-4">
+              <button onClick={addRow} className="btn text-sm px-5 py-2.5 bg-slate-800 hover:bg-slate-700 flex items-center gap-2">
+                <Plus size={16} /> Add Case
+              </button>
+              <span className="text-xs text-slate-500">Total: ₹{totalOTAmount.toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+
+          {/* ── Addon Section ── */}
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2"><Settings className="text-indigo-400" /> Add-On Departments</h2>
+              <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [] } as any])} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-2">
+                <Plus size={14} /> Add Dept Add-On
+              </button>
+            </div>
+
+            {addons.length === 0 ? (
+              <div className="glass-card p-6 text-center text-slate-500 text-sm border-dashed">No Add-Ons configured. Add-on departments receive a share of total OT income.</div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {addons.map((addon, aIdx) => {
+                  const aRules = addonRulesMap[addon.addon_department_id] || [];
+                  const activeRuleIds = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : aRules.map(r => r.id);
+                  return (
+                    <div key={aIdx} className="glass-card p-5 border border-slate-700 relative">
+                      <button onClick={() => setAddons(addons.filter((_, i) => i !== aIdx))} className="absolute top-4 right-4 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={16} /></button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <label className="field-label">Target Department</label>
+                          <select value={addon.addon_department_id} onChange={e => {
+                            const next = [...addons];
+                            next[aIdx] = { ...next[aIdx], addon_department_id: e.target.value };
+                            setAddons(next);
+                            if (e.target.value) fetchAddonDeps(e.target.value);
+                          }} className="select-field" style={{ minHeight: '44px' }}>
+                            <option value="">Select Department...</option>
+                            {allDepartments.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="field-label">Share Percentage (%)</label>
+                          <input type="number" value={addon.percentage} onChange={e => {
+                            const next = [...addons];
+                            next[aIdx] = { ...next[aIdx], percentage: parseFloat(e.target.value) || 0 };
+                            setAddons(next);
+                          }} className="text-input" placeholder="e.g. 10" style={{ minHeight: '44px' }} />
+                        </div>
+                        <div>
+                          <label className="field-label">Attendance Rule</label>
+                          <select value={addon.attendance_rule} onChange={e => {
+                            const next = [...addons];
+                            next[aIdx] = { ...next[aIdx], attendance_rule: e.target.value as any };
+                            setAddons(next);
+                          }} className="select-field" style={{ minHeight: '44px' }}>
+                            <option value="none">No Attendance Impact</option>
+                            <option value="monthly">Monthly Attendance (Read Only)</option>
+                            <option value="daily">Daily Attendance (Read Only)</option>
+                          </select>
+                        </div>
+                      </div>
+                      {addon.addon_department_id && (
+                        <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                          <p className="text-xs font-semibold text-slate-400 mb-2">APPLIED ROLES</p>
+                          <div className="flex flex-wrap gap-2">
+                            {aRules.map(rule => {
+                              const isApplied = activeRuleIds.includes(rule.id);
+                              return (
+                                <button key={rule.id} onClick={() => {
+                                  const next = [...addons];
+                                  next[aIdx] = { ...next[aIdx], applied_rules: isApplied ? activeRuleIds.filter(id => id !== rule.id) : [...activeRuleIds, rule.id] };
+                                  setAddons(next);
+                                }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isApplied ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}>
+                                  {rule.role}
+                                </button>
+                              );
+                            })}
+                            {aRules.length === 0 && <span className="text-xs text-slate-500 italic">No rules defined in dept.</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Preview Section ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Users size={18} className="text-blue-400" /> Core OT Preview</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {otBreakdown.map((row, i) => (
+                  <div key={i} className="glass-card p-4 flex flex-col gap-1 border border-slate-700">
+                    <span className="text-slate-200 font-semibold text-sm">{row.name}</span>
+                    <span className="text-slate-400 text-xs uppercase tracking-wider">{row.role}</span>
+                    <span className="text-emerald-400 font-bold text-lg mt-1">₹{row.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
+                {otBreakdown.length === 0 && <span className="text-slate-500 text-sm">No portions calculated.</span>}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2"><Settings size={18} className="text-indigo-400" /> Add-On Preview</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {addonBreakdown.map((row, i) => (
+                  <div key={i} className="glass-card p-4 flex flex-col gap-1 border border-slate-700">
+                    <span className="text-slate-200 font-semibold text-sm">{row.staffName} <span className="text-xs text-indigo-400 ml-1">({row.deptName})</span></span>
+                    <span className="text-slate-400 text-xs uppercase tracking-wider">{row.role}</span>
+                    <span className="text-indigo-400 font-bold text-lg mt-1">₹{row.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
+                {addonBreakdown.length === 0 && <span className="text-slate-500 text-sm">No Add-on portions calculated.</span>}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

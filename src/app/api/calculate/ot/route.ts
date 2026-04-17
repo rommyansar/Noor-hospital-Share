@@ -1,0 +1,333 @@
+import { NextResponse } from 'next/server';
+import { createServerSupabaseClient as createClient } from '@/lib/supabase/server';
+import { invalidateReportCache } from '@/lib/cache';
+
+function getDaysInMonth(yearStr: string, monthStr: string) {
+  return new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate();
+}
+
+export async function POST(req: Request) {
+  const supabase = await createClient();
+  const body = await req.json();
+  const { month, department_id } = body;
+
+  if (!month || !department_id) {
+    return NextResponse.json({ error: 'month (YYYY-MM) and department_id required' }, { status: 400 });
+  }
+
+  const [yearStr, monthNumStr] = month.split('-');
+  const daysInMonth = getDaysInMonth(yearStr, monthNumStr);
+
+  try {
+    // 1. Fetch all OT cases for this month + department
+    const { data: otCases, error: casesErr } = await supabase
+      .from('ot_cases')
+      .select('*')
+      .eq('month', month)
+      .eq('department_id', department_id)
+      .order('date', { ascending: true });
+
+    if (casesErr) {
+      return NextResponse.json({ error: casesErr.message }, { status: 500 });
+    }
+
+    if (!otCases || otCases.length === 0) {
+      return NextResponse.json({ error: 'No OT cases found for this month and department' }, { status: 400 });
+    }
+
+    // 2. Fetch staff names for lookups
+    const { data: allStaff } = await supabase.from('staff').select('id, name, role').eq('is_active', true);
+    const staffMap: Record<string, { name: string; role: string }> = {};
+    (allStaff || []).forEach((s: any) => { staffMap[s.id] = { name: s.name, role: s.role }; });
+
+    // 3. Calculate shares per staff from OT cases — track per-case-type breakdown
+    const staffShares: Record<string, {
+      total_share: number;
+      total_working_amount: number;
+      case_breakdowns: { case_type: string; role_type: string; amount: number; pct: number; mode: string; group_count: number; share: number }[];
+    }> = {};
+
+    const addShare = (
+      staffId: string,
+      share: number,
+      caseAmount: number,
+      pct: number,
+      mode: string,
+      groupCount: number,
+      caseType: string,
+      roleType: string,
+    ) => {
+      if (!staffId || share <= 0) return;
+      if (!staffShares[staffId]) {
+        staffShares[staffId] = {
+          total_share: 0,
+          total_working_amount: 0,
+          case_breakdowns: [],
+        };
+      }
+      staffShares[staffId].total_share += share;
+      staffShares[staffId].total_working_amount += caseAmount;
+      staffShares[staffId].case_breakdowns.push({
+        case_type: caseType,
+        role_type: roleType,
+        amount: caseAmount,
+        pct,
+        mode,
+        group_count: groupCount,
+        share,
+      });
+    };
+
+    let totalOTIncome = 0;
+
+    for (const c of otCases) {
+      const amt = parseFloat(c.amount) || 0;
+      totalOTIncome += amt;
+      if (amt <= 0) continue;
+
+      const caseType = c.case_type || 'Major';
+
+      // Doctor (Main) — always individual
+      if (c.doctor_id) {
+        const pct = parseFloat(c.doctor_pct) || 0;
+        const share = Math.round((amt * pct / 100) * 100) / 100;
+        addShare(c.doctor_id, share, amt, pct, 'individual', 1, caseType, 'Doctor');
+      }
+
+      // Helper for role groups
+      const processRole = (ids: string[], pctRaw: number, mode: string, roleType: string) => {
+        if (!ids || ids.length === 0) return;
+        const pct = parseFloat(String(pctRaw)) || 0;
+        const totalShare = Math.round((amt * pct / 100) * 100) / 100;
+        if (mode === 'group') {
+          const perPerson = Math.round((totalShare / ids.length) * 100) / 100;
+          ids.forEach(id => addShare(id, perPerson, amt, pct, 'group', ids.length, caseType, roleType));
+        } else {
+          ids.forEach(id => addShare(id, totalShare, amt, pct, 'individual', 1, caseType, roleType));
+        }
+      };
+
+      processRole(c.assist_doctor_ids || [], c.assist_doctor_pct, c.assist_doctor_mode || 'group', 'Assist Doctor');
+      processRole(c.assist_nurse_ids || [], c.assist_nurse_pct, c.assist_nurse_mode || 'group', 'Assist Nurse');
+      processRole(c.paramedical_ids || [], c.paramedical_pct, c.paramedical_mode || 'group', 'Paramedical');
+    }
+
+    // 4. Process OT add-ons
+    const { data: otAddons } = await supabase
+      .from('ot_monthly_addons')
+      .select('*')
+      .eq('month', month)
+      .eq('department_id', department_id);
+
+    const addonResults: any[] = [];
+
+    if (otAddons && otAddons.length > 0) {
+      const startDate = `${month}-01`;
+      const endDate = monthNumStr === '12'
+        ? `${parseInt(yearStr) + 1}-01-01`
+        : `${yearStr}-${String(parseInt(monthNumStr) + 1).padStart(2, '0')}-01`;
+
+      const { data: allLeavesData } = await supabase
+        .from('staff_leaves')
+        .select('*')
+        .gte('date', startDate)
+        .lt('date', endDate);
+
+      const globalLeavesByDate: Record<string, Set<string>> = {};
+      if (allLeavesData) {
+        for (const l of allLeavesData) {
+          if (!globalLeavesByDate[l.date]) globalLeavesByDate[l.date] = new Set();
+          globalLeavesByDate[l.date].add(l.staff_id);
+        }
+      }
+
+      for (const addon of otAddons) {
+        if (!addon.addon_department_id || (parseFloat(addon.percentage) || 0) <= 0) continue;
+
+        const addonPct = parseFloat(addon.percentage) || 0;
+        const pool = Math.round(totalOTIncome * (addonPct / 100) * 100) / 100;
+        const attRule = addon.attendance_rule || 'none';
+
+        const [{ data: addonStaff }, { data: addonRules }, { data: addonDeptData }] = await Promise.all([
+          supabase.from('staff').select('*').contains('department_ids', [addon.addon_department_id]).eq('is_active', true),
+          supabase.from('department_rules').select('*').eq('department_id', addon.addon_department_id).eq('is_active', true),
+          supabase.from('departments').select('id, name').eq('id', addon.addon_department_id).single(),
+        ]);
+
+        const addonDeptName = addonDeptData?.name || 'Unknown';
+        const appliedRuleIds: string[] = Array.isArray(addon.applied_rules) ? addon.applied_rules : [];
+        const ruleMap: Record<string, any> = {};
+        (addonRules || []).forEach((r: any) => {
+          if (appliedRuleIds.length === 0 || appliedRuleIds.includes(r.id)) {
+            ruleMap[r.role.toUpperCase().trim()] = r;
+          }
+        });
+
+        const roleCounts: Record<string, number> = {};
+        (addonStaff || []).forEach((s: any) => {
+          const rk = s.role.toUpperCase().trim();
+          roleCounts[rk] = (roleCounts[rk] || 0) + 1;
+        });
+
+        const getAbsentDays = (staffId: string): number => {
+          let absent = 0;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+            if (globalLeavesByDate[dateStr]?.has(staffId)) absent++;
+          }
+          return absent;
+        };
+
+        for (const staff of (addonStaff || [])) {
+          const userRole = staff.role.toUpperCase().trim();
+          const rule = ruleMap[userRole];
+          if (!rule) continue;
+
+          const distType = rule.distribution_type || 'individual';
+          const absentDays = getAbsentDays(staff.id);
+          const presentDays = daysInMonth - absentDays;
+          const presentCount = distType === 'group' ? (roleCounts[userRole] || 1) : 1;
+
+          let adjustedPool = pool;
+          if ((attRule === 'monthly' || attRule === 'daily') && daysInMonth > 0) {
+            adjustedPool = Math.round(pool * (presentDays / daysInMonth) * 100) / 100;
+          }
+
+          let share = distType === 'group'
+            ? Math.round((adjustedPool / presentCount) * 100) / 100
+            : adjustedPool;
+
+          if (share > 0) {
+            addonResults.push({
+              staff_id: staff.id,
+              department_id: department_id,  // Real department ID
+              date: `${month}-01`,
+              income_amount: totalOTIncome,
+              calculation_type: 'rule',
+              rule_percentage: String(addonPct),
+              distribution_type: distType,
+              pool_amount: pool,
+              present_count: presentCount,
+              final_share: share,
+              breakdown: {
+                role: staff.role,
+                percentage: `${addonPct}%`,
+                type: 'addon_share',
+                note: `Add-on: ${addonDeptName}`,
+                addon_department: addonDeptName,
+                addon_pct: `${addonPct}%`,
+                addon_pool: pool,
+                adjusted_pool: adjustedPool,
+                distribution_type: distType,
+                attendance_rule: attRule,
+                total_days: daysInMonth,
+                present_days: presentDays,
+                absent_days: absentDays,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Build daily_results entries for OT core staff
+    // Store under REAL department_id (not OT_ prefix)
+    const coreResults: any[] = [];
+    for (const [staffId, data] of Object.entries(staffShares)) {
+      const staff = staffMap[staffId];
+
+      // Build detailed per-case-type note
+      // Group breakdowns by role_type for a clean summary
+      const byRole: Record<string, { total_amount: number; total_share: number; pcts: Set<string>; entries: string[] }> = {};
+      for (const cb of data.case_breakdowns) {
+        const key = `${cb.case_type} (${cb.role_type})`;
+        if (!byRole[key]) byRole[key] = { total_amount: 0, total_share: 0, pcts: new Set(), entries: [] };
+        byRole[key].total_amount += cb.amount;
+        byRole[key].total_share += cb.share;
+        byRole[key].pcts.add(`${cb.pct}`);
+        const groupNote = cb.mode === 'group' && cb.group_count > 1 ? ` ÷ ${cb.group_count}` : '';
+        byRole[key].entries.push(`₹${cb.amount.toLocaleString('en-IN')} × ${cb.pct}%${groupNote} = ₹${cb.share.toLocaleString('en-IN')}`);
+      }
+
+      const noteLines: string[] = [];
+      for (const [key, val] of Object.entries(byRole)) {
+        noteLines.push(`${key}: ${val.entries.join(' + ')}`);
+      }
+      noteLines.push(`Total Working Amount: ₹${data.total_working_amount.toLocaleString('en-IN')}`);
+      noteLines.push(`Final Share: ₹${Math.round(data.total_share).toLocaleString('en-IN')}`);
+
+      const pctDisplay = [...new Set(data.case_breakdowns.map(cb => `${cb.pct}`))].join('/');
+      const modeDisplay = [...new Set(data.case_breakdowns.map(cb => cb.mode))].join('/');
+      const avgGroupCount = data.case_breakdowns.filter(cb => cb.mode === 'group').length > 0
+        ? Math.round(data.case_breakdowns.filter(cb => cb.mode === 'group').reduce((a, cb) => a + cb.group_count, 0) / data.case_breakdowns.filter(cb => cb.mode === 'group').length)
+        : 1;
+
+      coreResults.push({
+        staff_id: staffId,
+        department_id: department_id,  // Real department ID
+        date: `${month}-01`,
+        income_amount: data.total_working_amount,
+        calculation_type: 'rule',
+        rule_percentage: pctDisplay,
+        distribution_type: modeDisplay,
+        pool_amount: data.total_working_amount,
+        present_count: avgGroupCount,
+        final_share: Math.round(data.total_share * 100) / 100,
+        breakdown: {
+          role: staff?.role || 'Unknown',
+          percentage: `${pctDisplay}%`,
+          distribution: modeDisplay,
+          presentInRole: avgGroupCount,
+          gross_income: data.total_working_amount,
+          note: noteLines.join('\n'),
+          type: 'ot_core',
+          case_details: byRole,
+        },
+      });
+    }
+
+    const allResults = [...coreResults, ...addonResults];
+
+    // 6. Delete old results for this REAL department and insert new
+    const startDate = `${month}-01`;
+    const endDate = monthNumStr === '12'
+      ? `${parseInt(yearStr) + 1}-01-01`
+      : `${yearStr}-${String(parseInt(monthNumStr) + 1).padStart(2, '0')}-01`;
+
+    await supabase.from('daily_results')
+      .delete()
+      .eq('department_id', department_id)
+      .gte('date', startDate)
+      .lt('date', endDate);
+
+    // Insert in chunks
+    const chunkSize = 500;
+    for (let i = 0; i < allResults.length; i += chunkSize) {
+      const chunk = allResults.slice(i, i + chunkSize);
+      const { error } = await supabase.from('daily_results').upsert(chunk, {
+        onConflict: 'staff_id,date,department_id',
+        ignoreDuplicates: false,
+      });
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+    }
+
+    invalidateReportCache();
+
+    const totalDistributed = allResults.reduce((s, r) => s + r.final_share, 0);
+
+    return NextResponse.json({
+      success: true,
+      message: 'OT calculation completed',
+      total_ot_income: totalOTIncome,
+      total_distributed: Math.round(totalDistributed * 100) / 100,
+      staff_count: allResults.length,
+      core_count: coreResults.length,
+      addon_count: addonResults.length,
+    });
+  } catch (err: any) {
+    console.error('OT calculation error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

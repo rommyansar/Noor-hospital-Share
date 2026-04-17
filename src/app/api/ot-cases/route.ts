@@ -6,6 +6,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
+    const departmentId = searchParams.get('department_id');
 
     if (!month) {
       return NextResponse.json({ error: 'Month parameter is required' }, { status: 400 });
@@ -13,10 +14,16 @@ export async function GET(request: Request) {
 
     const supabase = await createServerSupabaseClient();
     
-    const { data, error } = await supabase
+    let query = supabase
       .from('ot_cases')
       .select('*')
-      .eq('month', month)
+      .eq('month', month);
+
+    if (departmentId) {
+      query = query.eq('department_id', departmentId);
+    }
+
+    const { data, error } = await query
       .order('date', { ascending: true })
       .order('created_at', { ascending: true });
 
@@ -33,26 +40,27 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { month, cases } = await request.json();
+    const { month, department_id, cases } = await request.json();
 
-    if (!month || !Array.isArray(cases)) {
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+    if (!month || !department_id || !Array.isArray(cases)) {
+      return NextResponse.json({ error: 'Invalid payload — month, department_id, and cases required' }, { status: 400 });
     }
 
     const supabase = await createServerSupabaseClient();
 
-    // 1. Fetch existing cases for the month to find which ones to delete
+    // 1. Fetch existing cases for the month+department to find which ones to delete
     const { data: existingCases, error: fetchError } = await supabase
       .from('ot_cases')
       .select('id')
-      .eq('month', month);
+      .eq('month', month)
+      .eq('department_id', department_id);
 
     if (fetchError) {
       throw new Error(fetchError.message);
     }
 
     const existingIds = existingCases?.map(c => c.id) || [];
-    const incomingIds = cases.map((c: any) => c.id).filter(id => id); // existing ones in payload
+    const incomingIds = cases.map((c: any) => c.id).filter((id: any) => id);
     
     // Find IDs to delete (exist in DB but not in payload)
     const idsToDelete = existingIds.filter(id => !incomingIds.includes(id));
@@ -69,12 +77,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Upsert cases (create or update)
+    // 3. Separate new rows from existing rows
     if (cases.length > 0) {
-      // Map payload to DB columns
-      const upsertPayload = cases.map((c: any) => ({
-        id: c.id || undefined, // undefined lets it generate a new uuid if configured in DB or omit it
-        month: month,
+      const buildRow = (c: any, id?: string) => ({
+        ...(id ? { id } : {}),
+        month,
+        department_id,
         date: c.date,
         case_type: c.case_type || 'Major',
         amount: parseFloat(c.amount) || 0,
@@ -89,15 +97,26 @@ export async function POST(request: Request) {
         paramedical_ids: Array.isArray(c.paramedical_ids) ? c.paramedical_ids : [],
         paramedical_pct: parseFloat(c.paramedical_pct) || 0,
         paramedical_mode: c.paramedical_mode || 'group',
-      }));
+      });
 
-      const { error: upsertError } = await supabase
-        .from('ot_cases')
-        .upsert(upsertPayload)
-        .select();
+      const toUpdate = cases.filter((c: any) => c.id && !String(c.id).startsWith('temp_'));
+      const toInsert = cases.filter((c: any) => !c.id || String(c.id).startsWith('temp_'));
 
-      if (upsertError) {
-        throw new Error(upsertError.message);
+      // Insert new rows (no id — DB generates UUID)
+      if (toInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('ot_cases')
+          .insert(toInsert.map((c: any) => buildRow(c)));
+        if (insertError) throw new Error(`Insert error: ${insertError.message}`);
+      }
+
+      // Update existing rows
+      if (toUpdate.length > 0) {
+        const { error: updateError } = await supabase
+          .from('ot_cases')
+          .upsert(toUpdate.map((c: any) => buildRow(c, c.id)))
+          .select();
+        if (updateError) throw new Error(`Update error: ${updateError.message}`);
       }
     }
 

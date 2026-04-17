@@ -383,8 +383,11 @@ export default function OTEntryPage() {
           addons: addons.filter(a => a.addon_department_id && a.percentage > 0).map(a => ({
             addon_department_id: a.addon_department_id,
             percentage: a.percentage,
+            calculation_type: a.calculation_type || 'individual',
             attendance_rule: a.attendance_rule || 'none',
-            applied_rules: a.applied_rules || []
+            applied_rules: a.applied_rules || [],
+            amount_source: a.amount_source || 'TDA',
+            manual_amount: a.manual_amount || ''
           }))
         })
       });
@@ -834,6 +837,17 @@ export default function OTEntryPage() {
                             <option value="none">No Attendance Impact</option>
                             <option value="monthly">Monthly Attendance</option>
                             <option value="daily">Daily Attendance</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="field-label">Mode</label>
+                          <select value={addon.calculation_type || 'individual'} onChange={e => {
+                            const next = [...addons];
+                            next[aIdx] = { ...next[aIdx], calculation_type: e.target.value as any };
+                            setAddons(next);
+                          }} className="select-field" style={{ minHeight: '44px' }}>
+                            <option value="individual">Individual</option>
+                            <option value="group">Group</option>
                           </select>
                         </div>
                       </div>

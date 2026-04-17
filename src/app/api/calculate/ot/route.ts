@@ -210,14 +210,20 @@ export async function POST(req: Request) {
           return { presentIncome, presentDays, absentDays };
         };
 
-        for (const staff of (addonStaff || [])) {
-          const userRole = staff.role.toUpperCase().trim();
-          const rule = ruleMap[userRole];
-          if (!rule) continue;
+        // 2) Collect available staff logic
+        const activeStaff = (addonStaff || []).filter((s: any) => {
+          const staffRole = s.role.toUpperCase().trim();
+          if (appliedRuleIds.length > 0 && !ruleMap[staffRole]) return false;
+          return true;
+        });
 
-          const distType = rule.distribution_type || 'individual';
-          const presentCount = distType === 'group' ? (roleCounts[userRole] || 1) : 1;
+        const presentCount = activeStaff.length;
+        if (presentCount === 0) continue;
 
+        let distType = addon.calculation_type || 'individual';
+
+        for (const staff of activeStaff) {
+          // Rule requirement removed globally because activeStaff is pre-filtered by appliedRuleIds above.
           let adjustedPool = pool;
           let presentDays = daysInMonth;
           let absentDays = 0;
@@ -257,7 +263,7 @@ export async function POST(req: Request) {
           }
 
           let share = distType === 'group'
-            ? Math.round((adjustedPool / presentCount) * 100) / 100
+            ? (presentCount > 0 ? Math.round((adjustedPool / presentCount) * 100) / 100 : 0)
             : adjustedPool;
 
           if (share > 0) {

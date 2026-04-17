@@ -113,6 +113,8 @@ export interface OTMonthlyAddon {
   calculation_type: 'individual' | 'group';
   attendance_rule: 'daily' | 'monthly' | 'none';
   applied_rules?: string[];
+  amount_source?: 'TDA' | 'MANUAL';
+  manual_amount?: number | string;
   created_at: string;
 }
 

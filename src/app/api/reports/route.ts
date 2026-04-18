@@ -279,27 +279,32 @@ export async function GET(req: Request) {
     }
 
     if (rawCases.length > 0) {
-      // OT core staff — format case-wise
-      const byType: Record<string, { entries: string[], total: number }> = {};
+      // OT core staff — Aggregate by Case Type + Role + Pct + Group Size
+      const groups: Record<string, { cType: string, role: string, pct: number, mode: string, group_count: number, totalAmount: number, totalShare: number }> = {};
+      
       for (const rc of rawCases) {
         const cType = rc.case_type || 'Case';
-        const roleStr = rc.role_type && rc.role_type !== cType ? ` (${rc.role_type})` : '';
-        if (!byType[cType]) byType[cType] = { entries: [], total: 0 };
-        byType[cType].total += rc.share;
+        const roleType = rc.role_type && rc.role_type !== cType ? rc.role_type : '';
+        const key = `${cType}-${roleType}-${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
         
-        const amtStr = Math.round(rc.amount).toLocaleString('en-IN');
-        const shrStr = Math.round(rc.share).toLocaleString('en-IN');
-        
-        if (rc.mode === 'group' && rc.group_count > 1) {
-          const poolShr = Math.round(rc.amount * rc.pct / 100);
-          byType[cType].entries.push(`${cType}${roleStr}: ₹${amtStr} × ${rc.pct}% = ₹${poolShr.toLocaleString('en-IN')} ÷ ${rc.group_count} staff = ₹${shrStr}`);
-        } else {
-          byType[cType].entries.push(`${cType}${roleStr}: ₹${amtStr} × ${rc.pct}% = ₹${shrStr}`);
+        if (!groups[key]) {
+          groups[key] = { cType, role: roleType, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1, totalAmount: 0, totalShare: 0 };
         }
+        groups[key].totalAmount += rc.amount;
+        groups[key].totalShare += rc.share;
       }
       
-      for (const [cType, data] of Object.entries(byType)) {
-        lines.push(...data.entries);
+      for (const [, g] of Object.entries(groups)) {
+        const roleStr = g.role ? ` (${g.role})` : '';
+        const amtStr = Math.round(g.totalAmount).toLocaleString('en-IN');
+        const shrStr = Math.round(g.totalShare).toLocaleString('en-IN');
+        
+        if (g.mode === 'group' && g.group_count > 1) {
+          const poolShr = Math.round(g.totalAmount * g.pct / 100);
+          lines.push(`${g.cType}${roleStr}: ₹${amtStr} × ${g.pct}% = ₹${poolShr.toLocaleString('en-IN')} ÷ ${g.group_count} staff = ₹${shrStr}`);
+        } else {
+          lines.push(`${g.cType}${roleStr}: ₹${amtStr} × ${g.pct}% = ₹${shrStr}`);
+        }
       }
     } else if (staff.rule_entries && staff.rule_entries.length > 0) {
       // Normal department rule-based staff — group by percentage + distribution

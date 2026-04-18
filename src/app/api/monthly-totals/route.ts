@@ -37,15 +37,11 @@ export async function POST(req: Request) {
     month,
     total_amount: total_amount || 0,
     applied_rules: applied_rules || [],
+    auto_staff_ids: Array.isArray(auto_staff_ids) ? auto_staff_ids : [],
+    manual_staff_ids: Array.isArray(manual_staff_ids) ? manual_staff_ids : [],
   };
   if (typeof is_locked === 'boolean') {
     upsertPayload.is_locked = is_locked;
-  }
-  if (Array.isArray(auto_staff_ids)) {
-    upsertPayload.auto_staff_ids = auto_staff_ids;
-  }
-  if (Array.isArray(manual_staff_ids)) {
-    upsertPayload.manual_staff_ids = manual_staff_ids;
   }
 
   const { data, error } = await supabase
@@ -54,7 +50,10 @@ export async function POST(req: Request) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("Supabase upsert error in monthly-totals:", error);
+    return NextResponse.json({ error: error.message || error }, { status: 500 });
+  }
   invalidateReportCache();
   return NextResponse.json(data);
 }

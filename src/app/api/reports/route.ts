@@ -181,6 +181,7 @@ export async function GET(req: Request) {
         present_count: r.present_count || 1,
         calculated_share: r.final_share,
         pool_amount: r.pool_amount || r.breakdown?.addon_pool || r.breakdown?.adjusted_pool || (r.final_share * (r.present_count || 1)),
+        prorate_ratio: r.breakdown?.prorate_ratio || null,
       });
     }
   }
@@ -278,28 +279,34 @@ export async function GET(req: Request) {
     }
 
     if (rawCases.length > 0) {
-      // OT core staff — group by pct+mode
-      const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
+      // OT core staff — format case-wise
+      const byType: Record<string, { entries: string[], total: number }> = {};
       for (const rc of rawCases) {
-        const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
-        if (!groups[key]) groups[key] = { amount: 0, share: 0, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1 };
-        groups[key].amount += rc.amount;
-        groups[key].share += rc.share;
-      }
-      for (const [, g] of Object.entries(groups)) {
-        const shareStr = Math.round(g.share).toLocaleString('en-IN');
-        const amtStr = Math.round(g.amount).toLocaleString('en-IN');
-        lines.push(`${g.pct}% → ₹${amtStr} = ₹${shareStr}`);
-        if (g.mode === 'group' && g.group_count > 1) {
-          lines.push(`÷ ${g.group_count} staff`);
+        const cType = rc.case_type || 'Case';
+        const roleStr = rc.role_type && rc.role_type !== cType ? ` (${rc.role_type})` : '';
+        if (!byType[cType]) byType[cType] = { entries: [], total: 0 };
+        byType[cType].total += rc.share;
+        
+        const amtStr = Math.round(rc.amount).toLocaleString('en-IN');
+        const shrStr = Math.round(rc.share).toLocaleString('en-IN');
+        
+        if (rc.mode === 'group' && rc.group_count > 1) {
+          const poolShr = Math.round(rc.amount * rc.pct / 100);
+          byType[cType].entries.push(`${cType}${roleStr}: ₹${amtStr} × ${rc.pct}% = ₹${poolShr.toLocaleString('en-IN')} ÷ ${rc.group_count} staff = ₹${shrStr}`);
+        } else {
+          byType[cType].entries.push(`${cType}${roleStr}: ₹${amtStr} × ${rc.pct}% = ₹${shrStr}`);
         }
+      }
+      
+      for (const [cType, data] of Object.entries(byType)) {
+        lines.push(...data.entries);
       }
     } else if (staff.rule_entries && staff.rule_entries.length > 0) {
       // Normal department rule-based staff — group by percentage + distribution
-      const ruleGroups: Record<string, { income: number; share: number; pool: number; pct: string; dist: string; count: number }> = {};
+      const ruleGroups: Record<string, { income: number; share: number; pool: number; pct: string; dist: string; count: number; prorate: string | null }> = {};
       for (const re of staff.rule_entries) {
-        const key = `${re.percentage}-${re.distribution_type}-${re.present_count}`;
-        if (!ruleGroups[key]) ruleGroups[key] = { income: 0, share: 0, pool: 0, pct: re.percentage, dist: re.distribution_type, count: re.present_count };
+        const key = `${re.percentage}-${re.distribution_type}-${re.present_count}-${re.prorate_ratio}`;
+        if (!ruleGroups[key]) ruleGroups[key] = { income: 0, share: 0, pool: 0, pct: re.percentage, dist: re.distribution_type, count: re.present_count, prorate: re.prorate_ratio };
         ruleGroups[key].income += re.income_amount;
         ruleGroups[key].share += re.calculated_share;
         ruleGroups[key].pool += (re.pool_amount || 0);
@@ -307,15 +314,16 @@ export async function GET(req: Request) {
       for (const [, g] of Object.entries(ruleGroups)) {
         const pctVal = parseFloat(g.pct) || 0;
         const incomeStr = Math.round(g.income).toLocaleString('en-IN');
+        const prorateText = g.prorate ? ` × ${g.prorate}` : '';
         
         if (g.dist === 'group' && g.count > 1) {
           const poolStr = Math.round(g.pool).toLocaleString('en-IN');
           const shareStr = Math.round(g.share).toLocaleString('en-IN');
           lines.push(`${pctVal}% → ₹${incomeStr} = ₹${poolStr}`);
-          lines.push(`÷ ${g.count} staff = ₹${shareStr}`);
+          lines.push(`÷ ${g.count} staff${prorateText} = ₹${shareStr}`);
         } else {
           const shareStr = Math.round(g.share).toLocaleString('en-IN');
-          lines.push(`${pctVal}% → ₹${incomeStr} = ₹${shareStr}`);
+          lines.push(`${pctVal}% → ₹${incomeStr}${prorateText} = ₹${shareStr}`);
         }
       }
     } else if (staff.work_entries && staff.work_entries.length > 0) {
@@ -346,7 +354,7 @@ export async function GET(req: Request) {
       }
     }
 
-    lines.push(`= Total Share: ₹${Math.round(staff.total_share).toLocaleString('en-IN')}`);
+    // lines.push(`= Total Share: ₹${Math.round(staff.total_share).toLocaleString('en-IN')}`);
 
     // Compute working amount (core amounts only, with addon fallback)
     let workingAmount = 0;

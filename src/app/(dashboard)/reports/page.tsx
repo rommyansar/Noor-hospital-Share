@@ -7,23 +7,6 @@ import type { Department } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
 import { exportExcel, exportPDF, type ReportExportData, type ReportType } from '@/lib/reportExport';
 
-interface WorkEntryDetail {
-  date: string;
-  description: string;
-  work_amount: number;
-  percentage: string;
-  calculated_share: number;
-}
-
-interface RuleEntryDetail {
-  date: string;
-  income_amount: number;
-  percentage: string;
-  distribution_type: string;
-  present_count: number;
-  calculated_share: number;
-}
-
 interface StaffReport {
   staff_id: string;
   staff_name: string;
@@ -32,9 +15,14 @@ interface StaffReport {
   days_present: number;
   origin_department: string;
   daily_details: { date: string; share: number; type: string; note?: string }[];
-  work_entries: WorkEntryDetail[];
-  rule_entries: RuleEntryDetail[];
-  // OT case-type breakdown
+  work_entries: any[];
+  rule_entries: any[];
+  // Universal breakdown fields (built by API for ALL departments)
+  breakdown_lines?: string[];
+  working_amount?: number;
+  display_percentage?: string;
+  division_info?: string;
+  // OT case-type breakdown (still available for exports)
   major_cases?: number;
   minor_cases?: number;
   major_base?: number;
@@ -42,6 +30,7 @@ interface StaffReport {
   combined_working_amount?: number;
   ot_mode?: string;
   ot_group_count?: number;
+  raw_cases?: any[];
   // Addon tracking
   addon_contributions?: { department: string; share: number; pct: string; attendance: string; note: string }[];
 }
@@ -50,13 +39,12 @@ interface ReportData {
   department_id: string;
   year: number;
   month: number;
+  is_ot?: boolean;
   total_income: number;
   total_distributed: number;
   staff_count: number;
   staff: StaffReport[];
 }
-
-const OT_DEPT_NAMES = ['delivery', 'general surgery', 'eye operation'];
 
 export default function ReportsPage() {
   const { addToast } = useToast();
@@ -108,9 +96,9 @@ export default function ReportsPage() {
     });
   };
 
-  // Check if selected dept is an OT department (Delivery / General Surgery)
+  // Use calculation_method flag from department data (not name matching)
   const selectedDeptObj = departments.find(d => d.id === selectedDept);
-  const isOTDept = selectedDeptObj ? OT_DEPT_NAMES.includes(selectedDeptObj.name.toLowerCase().trim()) : false;
+  const isOTDept = selectedDeptObj?.calculation_method === 'ot';
   const deptName = selectedDeptObj?.name || '';
 
   // Build export data
@@ -168,7 +156,7 @@ export default function ReportsPage() {
     
     try {
       if (isOTDept && type === 'department') {
-        // Use OT calculation for Delivery / General Surgery
+        // Use OT calculation for OT departments (detected via calculation_method flag)
         const res = await fetch('/api/calculate/ot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -297,16 +285,19 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Staff Table */}
+          {/* ── Universal Staff Table ── */}
           <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Staff</th>
-                    <th style={{ textAlign: 'center' }}>Days</th>
-                    <th style={{ textAlign: 'right' }}>Total Share</th>
-                    <th style={{ width: '40px' }}></th>
+                    <th style={{ width: '180px' }}>Staff</th>
+                    <th style={{ textAlign: 'right', width: '120px' }}>Working Amt</th>
+                    <th style={{ textAlign: 'center', width: '100px' }}>%</th>
+                    <th style={{ textAlign: 'center', width: '110px' }}>Division</th>
+                    <th style={{ width: '260px' }}>Breakdown</th>
+                    <th style={{ textAlign: 'right', width: '110px' }}>Final Share</th>
+                    <th style={{ width: '30px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -314,80 +305,77 @@ export default function ReportsPage() {
                     const isExpanded = expandedStaff.has(s.staff_id);
                     return (
                       <tr key={s.staff_id} style={{ cursor: 'pointer' }}>
-                        <td colSpan={5} style={{ padding: 0 }}>
+                        <td colSpan={7} style={{ padding: 0 }}>
                           {/* Main row */}
                           <div
                             onClick={() => toggleExpand(s.staff_id)}
                             style={{
-                              display: 'grid', gridTemplateColumns: '3fr 80px 1fr 40px',
-                              alignItems: 'center', padding: '12px 16px',
+                              display: 'grid',
+                              gridTemplateColumns: '180px 120px 100px 110px 1fr 110px 30px',
+                              alignItems: 'start',
+                              padding: '12px 16px',
                               borderBottom: isExpanded ? '1px solid rgba(71, 85, 105, 0.15)' : 'none',
                             }}
                           >
+                            {/* Staff Name + Role */}
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 600 }}>{s.staff_name} <span className="badge badge-info" style={{ marginLeft: 8 }}>{s.role}</span></span>
+                              <span style={{ fontWeight: 600, fontSize: '13px' }}>{s.staff_name}</span>
+                              <span className="badge badge-info" style={{ fontSize: '10px', marginTop: '3px', width: 'fit-content' }}>{s.role}</span>
                               {s.origin_department !== deptName && (
-                                <span style={{ fontSize: '10px', color: '#64748b' }}>
+                                <span style={{ fontSize: '10px', color: '#818cf8', marginTop: '2px' }}>
                                   from {s.origin_department}
                                 </span>
                               )}
                             </div>
-                            <span style={{ textAlign: 'center', color: '#94a3b8' }}>{s.days_present < 0 ? '-' : s.days_present}</span>
-                            <span style={{ textAlign: 'right', fontWeight: 700, color: '#34d399', fontSize: '16px' }}>
+
+                            {/* Working Amount */}
+                            <span style={{ textAlign: 'right', color: '#cbd5e1', fontSize: '13px', fontWeight: 500 }}>
+                              ₹{(s.working_amount || 0).toLocaleString('en-IN')}
+                            </span>
+
+                            {/* Percentage */}
+                            <span style={{ textAlign: 'center', color: '#f59e0b', fontSize: '12px', fontWeight: 600 }}>
+                              {s.display_percentage || '-'}
+                            </span>
+
+                            {/* Division Info */}
+                            <span style={{
+                              textAlign: 'center',
+                              color: s.division_info?.startsWith('÷') ? '#38bdf8' : '#64748b',
+                              fontSize: '12px',
+                              fontWeight: s.division_info?.startsWith('÷') ? 600 : 400,
+                            }}>
+                              {s.division_info || '-'}
+                            </span>
+
+                            {/* Breakdown */}
+                            <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.6' }}>
+                              {(s.breakdown_lines || []).map((line, i) => {
+                                const isTotal = line.startsWith('= Total');
+                                const isDivision = line.startsWith('÷');
+                                const isAddon = line.startsWith('[Add-on:');
+                                return (
+                                  <div key={i} style={{
+                                    color: isTotal ? '#34d399' : isDivision ? '#38bdf8' : isAddon ? '#818cf8' : '#94a3b8',
+                                    fontWeight: isTotal ? 700 : isDivision ? 600 : 400,
+                                    fontSize: isTotal ? '12px' : '11px',
+                                  }}>
+                                    {line}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Final Share */}
+                            <span style={{ textAlign: 'right', fontWeight: 700, color: '#34d399', fontSize: '15px' }}>
                               ₹{s.total_share.toLocaleString()}
                             </span>
+
+                            {/* Expand icon */}
                             <span style={{ textAlign: 'center', color: '#64748b' }}>
                               {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </span>
                           </div>
-
-                          {/* OT Case-Type Breakdown (for OT departments) */}
-                          {isOTDept && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0) && (
-                            <div style={{ padding: '6px 16px 6px 32px', background: 'rgba(16, 185, 129, 0.04)', borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
-                                {(s.major_cases || 0) > 0 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Major</span>
-                                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.major_cases} cases</span>
-                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>₹{(s.major_base || 0).toLocaleString('en-IN')}</span>
-                                  </div>
-                                )}
-                                {(s.minor_cases || 0) > 0 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Minor</span>
-                                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.minor_cases} cases</span>
-                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>₹{(s.minor_base || 0).toLocaleString('en-IN')}</span>
-                                  </div>
-                                )}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Working</span>
-                                  <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600 }}>₹{(s.combined_working_amount || 0).toLocaleString('en-IN')}</span>
-                                </div>
-                                {s.ot_mode && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Mode</span>
-                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>{s.ot_mode}{(s.ot_group_count || 0) > 1 ? ` (÷${s.ot_group_count})` : ''}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Add-On Contributions */}
-                          {(s.addon_contributions || []).length > 0 && (
-                            <div style={{ padding: '6px 16px 6px 32px', background: 'rgba(99, 102, 241, 0.06)', borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                                <span style={{ fontSize: '10px', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add-Ons:</span>
-                                {(s.addon_contributions || []).map((ac, acIdx) => (
-                                  <div key={acIdx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99, 102, 241, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
-                                    <span style={{ fontSize: '11px', color: '#c7d2fe', fontWeight: 600 }}>{ac.department}</span>
-                                    <span style={{ fontSize: '11px', color: '#a5b4fc' }}>{ac.pct}</span>
-                                    <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }}>₹{ac.share.toLocaleString('en-IN')}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
 
                           {/* Expanded daily detail */}
                           {isExpanded && (
@@ -493,7 +481,7 @@ export default function ReportsPage() {
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Normal Report</h3>
                   <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
-                    Clean summary for staff viewing. Multiple work entries per staff are combined into a single row.
+                    Clean summary with breakdown for each staff member.
                   </p>
                 </div>
               </div>
@@ -517,14 +505,6 @@ export default function ReportsPage() {
                     gap: '8px',
                     transition: 'all 0.2s ease',
                   }}
-                  onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15))';
-                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))';
-                    (e.target as HTMLElement).style.transform = 'translateY(0)';
-                  }}
                 >
                   <FileText size={15} /> PDF
                 </button>
@@ -546,14 +526,6 @@ export default function ReportsPage() {
                     justifyContent: 'center',
                     gap: '8px',
                     transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15))';
-                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08))';
-                    (e.target as HTMLElement).style.transform = 'translateY(0)';
                   }}
                 >
                   <FileSpreadsheet size={15} /> Excel
@@ -584,7 +556,7 @@ export default function ReportsPage() {
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Detailed Report</h3>
                   <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
-                    Full audit view with complete calculation breakdown. Each work entry shown separately with work type, amount, and percentage.
+                    Full audit view with complete calculation breakdown.
                   </p>
                 </div>
               </div>
@@ -608,14 +580,6 @@ export default function ReportsPage() {
                     gap: '8px',
                     transition: 'all 0.2s ease',
                   }}
-                  onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15))';
-                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))';
-                    (e.target as HTMLElement).style.transform = 'translateY(0)';
-                  }}
                 >
                   <FileText size={15} /> PDF
                 </button>
@@ -637,14 +601,6 @@ export default function ReportsPage() {
                     justifyContent: 'center',
                     gap: '8px',
                     transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(59, 130, 246, 0.15))';
-                    (e.target as HTMLElement).style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.target as HTMLElement).style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08))';
-                    (e.target as HTMLElement).style.transform = 'translateY(0)';
                   }}
                 >
                   <FileSpreadsheet size={15} /> Excel

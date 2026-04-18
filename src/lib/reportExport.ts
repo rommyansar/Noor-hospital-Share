@@ -37,6 +37,11 @@ interface StaffReportData {
   work_entries: WorkEntry[];
   rule_entries: RuleEntry[];
   daily_details?: { date: string; share: number; type: string; note?: string }[];
+  // Universal breakdown fields (built by API for ALL departments)
+  breakdown_lines?: string[];
+  working_amount?: number;
+  display_percentage?: string;
+  division_info?: string;
   // OT case-type breakdown
   major_cases?: number;
   minor_cases?: number;
@@ -98,6 +103,13 @@ function joinPcts(pcts: (string | number)[]): string {
   return normalized.join(', ');
 }
 
+/** Convert Unicode chars (→, ₹) to PDF-safe ASCII equivalents */
+function sanitizePdfText(text: string): string {
+  return text
+    .replace(/→/g, '->')
+    .replace(/₹/g, 'Rs.');
+}
+
 // ── Normal Report Data ─────────────────────────
 
 interface NormalRow {
@@ -110,117 +122,18 @@ interface NormalRow {
 }
 
 function buildNormalRows(data: ReportExportData): NormalRow[] {
-  // Check if this is an OT department by seeing if any staff has OT breakdown data
-  const hasOTData = data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
-
+  // Universal: always build breakdown for ALL departments
   return data.staff.map((s, idx) => {
-    // Combine all work entry amounts
-    const totalWorkAmount = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
-
-    // If there are work entries, calculate combined percentage from actual data
-    let displayPercentage = '';
-    if (s.work_entries.length > 0) {
-      displayPercentage = joinPcts(s.work_entries.map(w => w.percentage));
-    } else if (s.rule_entries.length > 0) {
-      displayPercentage = joinPcts(s.rule_entries.map(r => r.percentage));
-    }
-
-    // For rule-based staff, sum income amounts as "work amount"
-    const ruleWorkAmount = s.rule_entries.reduce((sum, r) => sum + r.income_amount, 0);
-    const workAmount = totalWorkAmount > 0 ? totalWorkAmount : ruleWorkAmount;
-
-    // Build OT breakdown string for normal report — case-by-case
-    let otBreakdown = '';
-    const parts: string[] = [];
-    const rawCases = (s as any).raw_cases || [];
-    
-    // Extracted percentages for OT Core
-    let corePcts: string[] = [];
-    if (hasOTData && rawCases.length > 0) {
-      corePcts = rawCases.map((rc: any) => normPct(rc.pct));
-      const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
-      for (const rc of rawCases) {
-        const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
-        if (!groups[key]) groups[key] = { amount: 0, share: 0, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1 };
-        groups[key].amount += rc.amount;
-        groups[key].share += rc.share;
-      }
-      
-      const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
-      for (const key of sortedKeys) {
-        const data = groups[key];
-        const pctStr = normPct(data.pct);
-        const amountStr = data.amount.toLocaleString('en-IN');
-        const shareStr = Math.round(data.share).toLocaleString('en-IN');
-        
-        if (data.mode === 'group' && data.group_count > 1) {
-          const poolAmt = Math.round(data.amount * (data.pct / 100) * 100) / 100;
-          parts.push(`Rs. ${amountStr} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${data.group_count} staff = Rs. ${shareStr}`);
-        } else {
-          parts.push(`${pctStr} -> Rs. ${amountStr} = Rs. ${shareStr}`);
-        }
-      }
-      
-      // Compute OT total (before addons)
-      const coreShare = rawCases.reduce((sum: number, rc: any) => sum + rc.share, 0);
-      parts.push(`= Total Share: Rs. ${Math.round(coreShare).toLocaleString('en-IN')}`);
-    } else if (hasOTData && ((s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0)) {
-      if ((s.major_cases || 0) > 0) parts.push(`Major: ${s.major_cases} (Rs. ${(s.major_base || 0).toLocaleString('en-IN')})`);
-      if ((s.minor_cases || 0) > 0) parts.push(`Minor: ${s.minor_cases} (Rs. ${(s.minor_base || 0).toLocaleString('en-IN')})`);
-    }
-
-    const addonContribs = (s as any).addon_contributions || [];
-    const hasAddon = addonContribs.length > 0;
-    const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
-    
-    let finalWorkAmount: number | string = workAmount;
-    let finalPercentage = displayPercentage;
-
-    if (hasAddon) {
-      const addonPcts = addonContribs.map((ac: any) => normPct(ac.pct));
-      finalPercentage = joinPcts([...corePcts, ...addonPcts]);
-    } else {
-      if (corePcts.length > 0) {
-        finalPercentage = joinPcts(corePcts);
-      }
-    }
-
-    if (hasAddon) {
-
-      if (!hasCoreOT) {
-        // Addon-only staff
-        const firstAc = addonContribs[0];
-        finalWorkAmount = firstAc.amount_source === 'MANUAL' ? (firstAc.adjusted_base || firstAc.base_amount || 0) : (firstAc.pool || 0);
-      } else {
-        // Mixed staff - generate separated values "50/-  25/-"
-        const coreWorkAmt = rawCases.length > 0 ? rawCases.reduce((sum: number, rc: any) => sum + rc.amount, 0) : workAmount;
-        const addonAmts = addonContribs.map((ac: any) => ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount || 0) : (ac.pool || 0));
-        
-        const coreStr = `${Math.round(coreWorkAmt).toLocaleString('en-IN')}/-`;
-        const addonStrs = addonAmts.map((a: number) => `${Math.round(a).toLocaleString('en-IN')}/-`);
-        finalWorkAmount = [coreStr, ...addonStrs].join('\n');
-      }
-
-      for (const ac of addonContribs) {
-         // Use adjusted_base for manual amount so the math works: adjusted_base x pct = pool
-         const acAmt = (ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount) : ac.pool) || 0;
-         const acPctStr = ac.pct;
-         const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
-         
-         if (ac.distribution_type === 'group' && ac.present_count > 1) {
-           parts.push(`Rs. ${acAmt.toLocaleString('en-IN')} x ${acPctStr} = Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Rs. ${acShareStr}`);
-         } else {
-           parts.push(`${acPctStr} -> Rs. ${acAmt.toLocaleString('en-IN')} = Rs. ${acShareStr}`);
-         }
-      }
-    }
-    otBreakdown = parts.join('\n');
+    const workAmount = s.working_amount || 0;
+    const displayPercentage = s.display_percentage || '';
+    // Use breakdown_lines from API, sanitized for PDF
+    const otBreakdown = sanitizePdfText((s.breakdown_lines || []).join('\n'));
 
     return {
       srNo: idx + 1,
       staffName: s.staff_name,
-      workAmount: typeof finalWorkAmount === 'number' ? Math.round(finalWorkAmount * 100) / 100 : finalWorkAmount,
-      percentage: finalPercentage,
+      workAmount: Math.round(workAmount * 100) / 100,
+      percentage: displayPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
       otBreakdown,
     };
@@ -266,207 +179,26 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       offCLDays = totalDaysInMonth - daysPresent;
       workingDays = daysPresent;
     } else {
-      // days_present === -1 means "no attendance" rule
       offCLDays = 'N/A';
       workingDays = 'N/A';
     }
 
-    // Get percentage and distribution info
-    let displayPercentage = '';
-    let distributionType = '';
+    // Use universal fields from API (same as normal report)
+    const displayPercentage = s.display_percentage || '';
+    const workingAmount = s.working_amount || 0;
+    const deptIncome = data.total_income;
+
+    // Division info
+    const divInfo = s.division_info || 'Individual (no division)';
+    const distributionType = divInfo.startsWith('÷') ? 'Group' : 'Individual';
     let groupCount: number | string = '-';
-    let deptIncome = data.total_income;
-    let workingAmount: number | string = 0;
-    let calculationBreakdown = '';
-
-    if (s.work_entries.length > 0) {
-      // Work-entry based staff
-      const totalWorkAmt = s.work_entries.reduce((sum, w) => sum + w.work_amount, 0);
-      displayPercentage = joinPcts(s.work_entries.map(w => w.percentage));
-      distributionType = 'Work Entry';
-      workingAmount = totalWorkAmt;
-
-      const parts = s.work_entries.map(w => {
-        const pctStr = normPct(w.percentage || 0);
-        return `${w.description}: Rs. ${w.work_amount.toLocaleString('en-IN')} × ${pctStr} = Rs. ${w.calculated_share.toLocaleString('en-IN')}`;
-      });
-      calculationBreakdown = parts.join('\n');
-
-    } else if (s.rule_entries.length > 0) {
-      // Rule-based staff
-      const firstEntry = s.rule_entries[0];
-      displayPercentage = joinPcts(s.rule_entries.map(r => r.percentage));
-      
-      const distType = firstEntry.distribution_type || 'individual';
-      distributionType = distType === 'group' ? 'Group' : 'Individual';
-      groupCount = distType === 'group' ? firstEntry.present_count : '-';
-
-      // Check daily_details for note (has breakdown info)
-      const note = s.daily_details?.[0]?.note || '';
-
-      // Check if this is an addon-only staff (no OT core work)
-      const addonContribs = (s as any).addon_contributions || [];
-      const hasAddon = addonContribs.length > 0;
-      const rawCases = (s as any).raw_cases || [];
-      const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
-
-      if (hasAddon && !hasCoreOT) {
-        // ADDON-ONLY staff: show addon calculation breakdown
-        const ac = addonContribs[0]; // Primary addon
-        const isManualAddon = ac.amount_source === 'MANUAL';
-        const baseAmt = ac.base_amount || 0;
-        const adjBase = ac.adjusted_base || 0;
-        const addonPool = ac.pool || 0;
-        const pDays = ac.present_days ?? 0;
-        const tDays = ac.total_days ?? 0;
-        const aDays = ac.absent_days ?? 0;
-        const addonCount = ac.present_count || 1;
-        const addonDist = ac.distribution_type || 'individual';
-
-        workingAmount = isManualAddon ? baseAmt : addonPool;
-        displayPercentage = ac.pct;
-        distributionType = addonDist === 'group' ? 'Group' : 'Individual';
-        groupCount = addonDist === 'group' ? addonCount : '-';
-
-        const parts: string[] = [];
-        if (isManualAddon) {
-          parts.push(`Manual Amount: Rs. ${baseAmt.toLocaleString('en-IN')}`);
-        } else {
-          parts.push(`Department TDA: Rs. ${baseAmt.toLocaleString('en-IN')}`);
-        }
-
-        if (ac.attendance !== 'none' && tDays > 0) {
-          parts.push(`Attendance: ${pDays}/${tDays} days (${aDays} off)`);
-          parts.push(`Adjusted Base: Rs. ${adjBase.toLocaleString('en-IN')}`);
-        }
-
-        parts.push(`x ${ac.pct} = Pool: Rs. ${addonPool.toLocaleString('en-IN')}`);
-
-        if (addonDist === 'group') {
-          parts.push(`/ ${addonCount} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`);
-        } else {
-          parts.push(`Final Share = Rs. ${s.total_share.toLocaleString('en-IN')}`);
-        }
-
-        calculationBreakdown = parts.join('\n');
-      } else {
-        // Standard rule-based or OT core + addon
-        workingAmount = s.rule_entries.reduce((sum, r) => sum + r.income_amount, 0);
-
-        // Check for raw_cases (case-by-case OT breakdown)
-        const rawCases = (s as any).raw_cases || [];
-        if (rawCases.length > 0) {
-          const groups: Record<string, { amount: number; share: number; pct: number; mode: string; group_count: number }> = {};
-          for (const rc of rawCases) {
-            const key = `${rc.pct}-${rc.mode}-${rc.group_count || 1}`;
-            if (!groups[key]) groups[key] = { amount: 0, share: 0, pct: rc.pct, mode: rc.mode, group_count: rc.group_count || 1 };
-            groups[key].amount += rc.amount;
-            groups[key].share += rc.share;
-          }
-
-          const caseParts: string[] = [];
-          const sortedKeys = Object.keys(groups).sort((a, b) => groups[b].pct - groups[a].pct);
-          for (const key of sortedKeys) {
-            const data = groups[key];
-            const pctStr = normPct(data.pct);
-            const amountStr = data.amount.toLocaleString('en-IN');
-            const shareStr = Math.round(data.share).toLocaleString('en-IN');
-            
-            if (data.mode === 'group' && data.group_count > 1) {
-              const poolAmt = Math.round(data.amount * (data.pct / 100) * 100) / 100;
-              caseParts.push(`Rs. ${amountStr} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${data.group_count} staff = Rs. ${shareStr}`);
-            } else {
-              caseParts.push(`${pctStr} -> Rs. ${amountStr} = Rs. ${shareStr}`);
-            }
-          }
-          const coreShare = rawCases.reduce((sum: number, rc: any) => sum + rc.share, 0);
-          caseParts.push(`= OT Total: Rs. ${Math.round(coreShare).toLocaleString('en-IN')}`);
-          calculationBreakdown = caseParts.join('\n');
-        } else {
-          // Fallback: old summary style
-          const pct = parseFloat(firstEntry.percentage || '0') || 0;
-          const pctStr = normPct(pct);
-          if (distType === 'group') {
-            const poolAmt = Math.round(workingAmount * (pct / 100) * 100) / 100;
-            const count = firstEntry.present_count || 1;
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pctStr} = Rs. ${poolAmt.toLocaleString('en-IN')}\n / ${count} staff = Rs. ${s.total_share.toLocaleString('en-IN')}`;
-          } else {
-            calculationBreakdown = `Rs. ${workingAmount.toLocaleString('en-IN')} x ${pctStr} = Rs. ${s.total_share.toLocaleString('en-IN')}`;
-          }
-        }
-
-        // If has addon contributions, append them
-        if (hasAddon) {
-          for (const ac of addonContribs) {
-            const isManualAc = ac.amount_source === 'MANUAL';
-            const acParts: string[] = [];
-            acParts.push(`\n[Add-on: ${ac.department}]`);
-            if (isManualAc) {
-              acParts.push(`Manual Amount: Rs. ${(ac.base_amount || 0).toLocaleString('en-IN')}`);
-            } else {
-              acParts.push(`Department TDA: Rs. ${(ac.base_amount || 0).toLocaleString('en-IN')}`);
-            }
-            if (ac.attendance !== 'none' && ac.total_days > 0) {
-              acParts.push(`Attendance: ${ac.present_days}/${ac.total_days} days (${ac.absent_days} off)`);
-              acParts.push(`Adjusted Base: Rs. ${(ac.adjusted_base || 0).toLocaleString('en-IN')}`);
-            }
-            
-            const acPctStr = normPct(ac.pct);
-            const acShareStr = Math.round(ac.share).toLocaleString('en-IN');
-            
-            if (ac.distribution_type === 'group' && ac.present_count > 1) {
-              acParts.push(`x ${acPctStr} = Pool: Rs. ${(ac.pool || 0).toLocaleString('en-IN')}\n / ${ac.present_count} staff = Final Share: Rs. ${acShareStr}`);
-            } else {
-              acParts.push(`x ${acPctStr} = Final Share: Rs. ${acShareStr}`);
-            }
-            calculationBreakdown += acParts.join('\n');
-          }
-        }
-
-        // If addon, prepend addon context
-        if (isAddon && note && !hasAddon) {
-          calculationBreakdown = `[${note}]\n-> ${calculationBreakdown}`;
-        }
-      }
+    if (divInfo.startsWith('÷')) {
+      const match = divInfo.match(/(\d+)/);
+      groupCount = match ? parseInt(match[1]) : '-';
     }
 
-    let finalWorkingAmount: number | string = workingAmount;
-    let finalPercentage = displayPercentage;
-
-    let corePcts: string[] = [];
-    const rawCases = (s as any).raw_cases || [];
-    if (rawCases.length > 0) {
-      corePcts = rawCases.map((rc: any) => normPct(rc.pct));
-    }
-    
-    // Check addon presence again for the bottom export builder
-    const addonContribs = (s as any).addon_contributions || [];
-    const hasAddon = addonContribs.length > 0;
-    const hasCoreOT = rawCases.length > 0 || (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0;
-
-    if (hasAddon) {
-      const addonPcts = addonContribs.map((ac: any) => normPct(ac.pct));
-      finalPercentage = joinPcts([...corePcts, ...addonPcts]);
-
-      if (!hasCoreOT) {
-        // Addon-only staff
-        const firstAc = addonContribs[0];
-        finalWorkingAmount = firstAc.amount_source === 'MANUAL' ? (firstAc.adjusted_base || firstAc.base_amount || 0) : (firstAc.pool || 0);
-      } else {
-        // Mixed staff
-        const coreAmt = rawCases.length > 0 ? rawCases.reduce((sum: number, rc: any) => sum + rc.amount, 0) : workingAmount;
-        const addonAmts = addonContribs.map((ac: any) => ac.amount_source === 'MANUAL' ? (ac.adjusted_base || ac.base_amount || 0) : (ac.pool || 0));
-        
-        const coreStr = `${Math.round(coreAmt).toLocaleString('en-IN')}/-`;
-        const addonStrs = addonAmts.map((a: number) => `${Math.round(a).toLocaleString('en-IN')}/-`);
-        finalWorkingAmount = [coreStr, ...addonStrs].join('\n');
-      }
-    } else {
-      // Non-addon mixed/core OT
-      if (corePcts.length > 0) {
-        finalPercentage = joinPcts(corePcts);
-      }
-    }
+    // Use universal breakdown_lines from API — sanitize for PDF
+    const calculationBreakdown = sanitizePdfText((s.breakdown_lines || []).join('\n'));
 
     rows.push({
       srNo: idx + 1,
@@ -477,8 +209,8 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       offCLDays,
       workingDays,
       deptIncome,
-      workingAmount: typeof finalWorkingAmount === 'number' ? Math.round(finalWorkingAmount * 100) / 100 : finalWorkingAmount,
-      percentage: finalPercentage,
+      workingAmount: Math.round(workingAmount * 100) / 100,
+      percentage: displayPercentage,
       distributionType,
       groupCount,
       calculationBreakdown,
@@ -533,14 +265,9 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
 
   if (type === 'normal') {
     const rows = buildNormalRows(data);
-    const hasOTData = rows.some(r => r.otBreakdown);
-    const tableHeader = hasOTData
-      ? ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'OT Breakdown', 'Share Amount (Rs.)']
-      : ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'Share Amount (Rs.)'];
-    const tableRows = rows.map(r => hasOTData
-      ? [r.srNo, r.staffName, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]
-      : [r.srNo, r.staffName, r.workAmount, r.percentage, r.shareAmount]
-    );
+    // Universal: always include Breakdown column
+    const tableHeader = ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'Breakdown', 'Share Amount (Rs.)'];
+    const tableRows = rows.map(r => [r.srNo, r.staffName, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]);
 
     sheetData = [
       ...headerRows,
@@ -583,23 +310,15 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
 
   // Set column widths
   if (type === 'normal') {
-    const hasOTData = data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
-    ws['!cols'] = hasOTData
-      ? [
-          { wch: 8 },   // Sr. No.
-          { wch: 30 },  // Staff Name
-          { wch: 18 },  // Work Amount
-          { wch: 15 },  // Percentage
-          { wch: 60 },  // OT Breakdown
-          { wch: 18 },  // Share Amount
-        ]
-      : [
-          { wch: 8 },   // Sr. No.
-          { wch: 40 },  // Staff Name
-          { wch: 18 },  // Work Amount
-          { wch: 15 },  // Percentage
-          { wch: 18 },  // Share Amount
-        ];
+    // Universal: always 6 columns with Breakdown
+    ws['!cols'] = [
+      { wch: 8 },   // Sr. No.
+      { wch: 30 },  // Staff Name
+      { wch: 18 },  // Work Amount
+      { wch: 15 },  // Percentage
+      { wch: 60 },  // Breakdown
+      { wch: 18 },  // Share Amount
+    ];
   } else {
     ws['!cols'] = [
       { wch: 5 },   // Sr.
@@ -617,9 +336,8 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     ];
   }
 
-  // Merge header cells
-  const hasOTCol = type === 'normal' && data.staff.some(s => (s.major_cases || 0) > 0 || (s.minor_cases || 0) > 0);
-  const colCount = type === 'normal' ? (hasOTCol ? 7 : 6) : 13;
+  // Merge header cells — always 6 columns for normal, 13 for detailed
+  const colCount = type === 'normal' ? 6 : 13;
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Hospital name
     { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, // Report title
@@ -704,33 +422,19 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   // ── Table ──
   if (type === 'normal') {
     const rows = buildNormalRows(data);
-    const hasOTData = rows.some(r => r.otBreakdown);
+    // Universal: always include Breakdown column
+    const headCols = ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'Breakdown', 'Share Amount (Rs.)'];
 
-    const headCols = hasOTData
-      ? ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'OT Breakdown', 'Share Amount (Rs.)']
-      : ['Sr.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage', 'Share Amount (Rs.)'];
+    const bodyRows = rows.map(r => [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
 
-    const bodyRows = rows.map(r => hasOTData
-      ? [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]
-      : [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, formatCurrency(r.shareAmount)]
-    );
-
-    const colStyles: Record<number, any> = hasOTData
-      ? {
-          0: { halign: 'center', cellWidth: 10 },
-          1: { halign: 'left', cellWidth: 40 },
-          2: { halign: 'right', cellWidth: 25 },
-          3: { halign: 'center', cellWidth: 15 },
-          4: { halign: 'left', cellWidth: 65 },
-          5: { halign: 'right', cellWidth: 25 },
-        }
-      : {
-          0: { halign: 'center', cellWidth: 15 },
-          1: { halign: 'left', cellWidth: 55 },
-          2: { halign: 'right', cellWidth: 35 },
-          3: { halign: 'center', cellWidth: 35 },
-          4: { halign: 'right', cellWidth: 40 },
-        };
+    const colStyles: Record<number, any> = {
+      0: { halign: 'center', cellWidth: 10 },
+      1: { halign: 'left', cellWidth: 40 },
+      2: { halign: 'right', cellWidth: 25 },
+      3: { halign: 'center', cellWidth: 15 },
+      4: { halign: 'left', cellWidth: 65 },
+      5: { halign: 'right', cellWidth: 25 },
+    };
 
     autoTable(doc, {
       startY: yPos,
@@ -744,11 +448,11 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         fillColor: [16, 185, 129],
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: hasOTData ? 8 : 10,
+        fontSize: 8,
         halign: 'center',
       },
       bodyStyles: {
-        fontSize: hasOTData ? 8 : 9,
+        fontSize: 8,
         cellPadding: 3,
       },
       columnStyles: colStyles,

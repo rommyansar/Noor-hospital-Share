@@ -43,6 +43,8 @@ async function processAddons(
   month: string,
   daysInMonth: number,
   globalLeavesByDate: Record<string, Set<string>>,
+  incomesData: any[],
+  deptTotalAmount: number,
 ): Promise<{ results: any[]; totalAddonDeduction: number }> {
   const results: any[] = [];
   let totalAddonDeduction = 0;
@@ -155,24 +157,50 @@ async function processAddons(
 
       // ── CORRECT ADD-ON SEQUENCE: TDA → Add-On% → Attendance → Group ──
 
-      // Step 1: pool = mainIncome × addonPct (already computed above as `pool`)
-      // Step 2: Apply attendance reduction per staff
-      let adjustedPool = pool;
+      // Step 1: Base Income -> Attendance Adjusted Base
+      let adjustedBase = baseIncome;
       let noteExtra = '';
-      if ((attRule === 'monthly' || attRule === 'daily') && daysInMonth > 0) {
-        const ratio = presentDays / daysInMonth;
-        adjustedPool = Math.round(pool * ratio * 100) / 100;
-        noteExtra = ` (Prorated ${presentDays}/${daysInMonth})`;
-      } else {
+
+      if (attRule === 'none') {
         noteExtra = ' (No attendance)';
+      } else if (attRule === 'monthly') {
+        if (daysInMonth > 0) {
+          const ratio = presentDays / daysInMonth;
+          adjustedBase = Math.round(baseIncome * ratio * 100) / 100;
+        }
+        noteExtra = ` (Monthly: ${presentDays}/${daysInMonth})`;
+      } else if (attRule === 'daily') {
+        if (addon.amount_source === 'MANUAL') {
+          if (daysInMonth > 0) {
+            const ratio = presentDays / daysInMonth;
+            adjustedBase = Math.round(baseIncome * ratio * 100) / 100;
+          }
+          noteExtra = ` (Daily Fixed: ${presentDays}/${daysInMonth})`;
+        } else {
+          // Calculate sum of exact daily income for present days
+          let presentIncome = 0;
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+            if (!globalLeavesByDate[dateStr]?.has(staff.id)) {
+               const dayIncome = deptTotalAmount > 0 
+                 ? deptTotalAmount / daysInMonth 
+                 : (incomesData?.find((d: any) => d.date === dateStr)?.amount || 0);
+               presentIncome += dayIncome;
+            }
+          }
+          adjustedBase = Math.round(presentIncome * 100) / 100;
+          noteExtra = ` (Daily: ₹${Math.round(adjustedBase).toLocaleString('en-IN')} present)`;
+        }
       }
 
-      // Step 3: Apply group distribution (divide by total staff in role)
+      const PoolAfterBase = Math.round(adjustedBase * (addonPct / 100) * 100) / 100;
+
+      // Step 2: Apply group distribution (divide by total staff in role)
       let share = 0;
       if (distType === 'group') {
-        share = Math.round((adjustedPool / presentCount) * 100) / 100;
+        share = Math.round((PoolAfterBase / presentCount) * 100) / 100;
       } else {
-        share = adjustedPool;
+        share = PoolAfterBase;
       }
 
       const pctStrDisplay = addonPct.toString();
@@ -196,8 +224,9 @@ async function processAddons(
             note: `Add-on: ${addonDeptName} from ${mainDeptName}${noteExtra}`,
             addon_department: addonDeptName,
             addon_pct: `${addonPct}%`,
-            addon_pool: pool,
-            adjusted_pool: adjustedPool,
+            base_amount: baseIncome,
+            adjusted_base: adjustedBase,
+            addon_pool: PoolAfterBase,
             distribution_type: distType,
             attendance_rule: attRule,
             total_days: daysInMonth,
@@ -253,6 +282,11 @@ export async function POST(req: Request) {
   } else {
     const { data: allDepts } = await supabase.from('departments').select('id, name, calculation_method, attendance_rule').eq('is_active', true);
     if (allDepts) deptsToProcess = allDepts;
+  }
+
+  // OT departments use /api/calculate/ot — exclude from standard engine
+  if (department_id === 'all') {
+    deptsToProcess = deptsToProcess.filter(d => d.calculation_method !== 'ot');
   }
 
   // ── Fetch ALL leaves for this month GLOBALLY ──
@@ -358,6 +392,8 @@ export async function POST(req: Request) {
       month,
       daysInMonth,
       globalLeavesByDate,
+      incomesData || [],
+      deptTotalAmount,
     );
     newResults.push(...addonResults);
     totalDistributed += addonResults.reduce((s: number, r: any) => s + r.final_share, 0);
@@ -792,10 +828,7 @@ export async function POST(req: Request) {
     const chunkSize = 500;
     for (let i = 0; i < dedupedResults.length; i += chunkSize) {
       const chunk = dedupedResults.slice(i, i + chunkSize);
-      const { error } = await supabase.from('daily_results').upsert(chunk, {
-        onConflict: 'staff_id,date,department_id',
-        ignoreDuplicates: false,
-      });
+      const { error } = await supabase.from('daily_results').insert(chunk);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }

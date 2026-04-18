@@ -8,7 +8,7 @@ export interface Department {
   id: string;
   name: string;
   is_active: boolean;
-  calculation_method: 'income' | 'staff_based' | 'auto_manual';
+  calculation_method: 'income' | 'staff_based' | 'auto_manual' | 'ot';
   attendance_rule: 'daily' | 'monthly' | 'none';
   created_at: string;
   updated_at: string;

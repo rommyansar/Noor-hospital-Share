@@ -488,41 +488,47 @@ export async function POST(req: Request) {
       }
     } else if (dept.calculation_method === 'auto_manual') {
       // ════════════════════════════════════════════════════════════════
-      // AUTO + MANUAL HYBRID MODE
+      // AUTO + MANUAL HYBRID MODE (v2 — Multi-Entry)
       // ════════════════════════════════════════════════════════════════
-      // RULE 1: TDA distributed per-day (daily loop)
-      // RULE 2: Auto & Manual are completely isolated pools
-      // RULE 3: Group distribution counted separately per pool
-      // RULE 4: Manual staff without amount are skipped
-      // RULE 5: Daily present_staff_ids overrides monthly auto selection
-      // RULE 6: Manual amounts NOT deducted from TDA
+      // Entries are now objects: {entry_id, staff_id, role, percentage, dist_type, amount?}
+      // Same staff can appear N times with different roles/percentages
+      // Backward compat: old string[] format falls back to ruleMap lookup
       // ════════════════════════════════════════════════════════════════
 
-      const autoStaffIds: string[] = Array.isArray(totalAmountRow?.auto_staff_ids) ? totalAmountRow.auto_staff_ids : [];
-      const manualStaffIds: string[] = Array.isArray(totalAmountRow?.manual_staff_ids) ? totalAmountRow.manual_staff_ids : [];
+      const rawAutoEntries: any[] = Array.isArray(totalAmountRow?.auto_staff_ids) ? totalAmountRow.auto_staff_ids : [];
+      const rawManualEntries: any[] = Array.isArray(totalAmountRow?.manual_staff_ids) ? totalAmountRow.manual_staff_ids : [];
 
-      // ── CONFLICT DETECTION ──
-      const autoSet = new Set(autoStaffIds);
-      const manualSet = new Set(manualStaffIds);
-      const duplicates = autoStaffIds.filter(id => manualSet.has(id));
-      if (duplicates.length > 0) {
-        // Get staff names for error message
-        const dupStaff = staffData.filter((s: any) => duplicates.includes(s.id));
-        const dupNames = dupStaff.map((s: any) => s.name).join(', ');
-        return NextResponse.json({
-          error: `Duplicate entry: Staff cannot be in both Auto and Manual mode. Conflicting staff: ${dupNames || duplicates.join(', ')}`,
-        }, { status: 400 });
-      }
+      // Normalize entries: support both old string[] and new object[] formats
+      const normalizeEntry = (raw: any, isManual: boolean): any | null => {
+        if (typeof raw === 'object' && raw !== null && raw.staff_id) {
+          return raw; // New format
+        }
+        if (typeof raw === 'string') {
+          // Old format — migrate using ruleMap
+          const staffObj = staffData.find((s: any) => s.id === raw);
+          if (!staffObj) return null;
+          const userRole = staffObj.role.toUpperCase().trim();
+          const rule = ruleMap[userRole];
+          return {
+            entry_id: raw,
+            staff_id: raw,
+            role: staffObj.role,
+            percentage: rule ? Number(rule.percentage) : 0,
+            dist_type: rule?.distribution_type || 'individual',
+          };
+        }
+        return null;
+      };
 
-      // ── PART A: AUTO STAFF (TDA-based, daily loop) ──
-      if (autoStaffIds.length > 0 && deptTotalAmount > 0) {
-        // Filter to auto-only staff objects
-        const autoStaff = staffData.filter((s: any) => autoSet.has(s.id));
+      const autoEntries = rawAutoEntries.map(r => normalizeEntry(r, false)).filter(Boolean);
+      const manualEntries = rawManualEntries.map(r => normalizeEntry(r, true)).filter(Boolean);
 
-        // Build role counts for group distribution — AUTO pool only
+      // ── PART A: AUTO ENTRIES (TDA-based, daily loop) ──
+      if (autoEntries.length > 0 && deptTotalAmount > 0) {
+        // Build role counts for group distribution in AUTO pool
         const autoRoleCounts: Record<string, number> = {};
-        for (const s of autoStaff) {
-          const rk = s.role.toUpperCase().trim();
+        for (const entry of autoEntries) {
+          const rk = entry.role.toUpperCase().trim();
           autoRoleCounts[rk] = (autoRoleCounts[rk] || 0) + 1;
         }
 
@@ -533,44 +539,35 @@ export async function POST(req: Request) {
           if (dailyIncome <= 0) continue;
 
           const dayData = incomesData?.find((d: any) => d.date === dateStr);
-          const isAttNone = dept.attendance_rule === 'none';
 
-          // Determine present auto staff for this day
-          // RULE 5: Daily present_staff_ids overrides monthly auto selection
-          let presentAutoStaff: any[] = [];
+          // Determine present staff IDs for this day
+          let presentStaffIds: Set<string> | null = null;
           if (dayData && dayData.present_staff_ids && Array.isArray(dayData.present_staff_ids) && dayData.present_staff_ids.length > 0) {
-            // Explicit daily list exists — intersect with auto staff
-            const explicitIds = new Set(dayData.present_staff_ids as string[]);
-            presentAutoStaff = autoStaff.filter((s: any) => explicitIds.has(s.id));
-          } else {
-            // No explicit list
-            // If 'daily', exclude absent staff (day-wise filtering). 
-            // If 'monthly' or 'none', include everyone here to keep group divisors static, then apply ratio later.
-            const isDailyAtt = dept.attendance_rule === 'daily';
-            const onLeaveSet = isDailyAtt ? (globalLeavesByDate[dateStr] || new Set<string>()) : new Set<string>();
-            presentAutoStaff = autoStaff.filter((s: any) => !onLeaveSet.has(s.id));
+            presentStaffIds = new Set(dayData.present_staff_ids as string[]);
           }
 
-          // Count present staff per role for this day (AUTO pool only)
-          const dayAutoRoleCounts: Record<string, number> = {};
-          for (const s of presentAutoStaff) {
-            const rk = s.role.toUpperCase().trim();
-            dayAutoRoleCounts[rk] = (dayAutoRoleCounts[rk] || 0) + 1;
-          }
+          const isDailyAtt = dept.attendance_rule === 'daily';
+          const onLeaveSet = isDailyAtt ? (globalLeavesByDate[dateStr] || new Set<string>()) : new Set<string>();
 
-          for (const staff of presentAutoStaff) {
-            const userRole = staff.role.toUpperCase().trim();
-            const rule = ruleMap[userRole];
-            if (!rule) continue;
+          for (const entry of autoEntries) {
+            // Check if staff is present today (at staff level)
+            if (presentStaffIds && !presentStaffIds.has(entry.staff_id)) continue;
+            if (!presentStaffIds && onLeaveSet.has(entry.staff_id)) continue;
 
-            const pctStr = getStaffPercentage(staff, dept.id, rule.percentage);
-            const distType = rule.distribution_type;
+            const pctStr = String(entry.percentage);
+            const distType = entry.dist_type || 'individual';
             let share = 0;
             let poolAmount = 0;
             let presentCount = 1;
 
             if (distType === 'group') {
-              presentCount = dayAutoRoleCounts[userRole] || 1;
+              // Count present entries with the same role today
+              presentCount = autoEntries.filter((e: any) => {
+                if (e.role.toUpperCase().trim() !== entry.role.toUpperCase().trim()) return false;
+                if (presentStaffIds && !presentStaffIds.has(e.staff_id)) return false;
+                if (!presentStaffIds && onLeaveSet.has(e.staff_id)) return false;
+                return true;
+              }).length || 1;
               share = computeGroupShare(dailyIncome, pctStr, presentCount);
               poolAmount = computePoolAmount(dailyIncome, pctStr);
             } else {
@@ -581,29 +578,30 @@ export async function POST(req: Request) {
             let absentDays = 0;
             for (let d = 1; d <= daysInMonth; d++) {
               const dStr = `${month}-${String(d).padStart(2, '0')}`;
-              if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
+              if (globalLeavesByDate[dStr]?.has(entry.staff_id)) absentDays++;
             }
             const presentDays = daysInMonth - absentDays;
             const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
-            
+
             share = Math.round(share * prorateRatio * 100) / 100;
 
             newResults.push({
-              staff_id: staff.id, department_id: dept.id, date: dateStr,
+              staff_id: entry.staff_id, department_id: dept.id, date: dateStr,
               income_amount: dailyIncome, calculation_type: 'rule',
               rule_percentage: pctStr, distribution_type: distType,
               pool_amount: poolAmount, present_count: presentCount,
               final_share: share,
               breakdown: {
-                role: staff.role,
+                role: entry.role,
                 percentage: `${parsePercentage(pctStr)}%`,
                 distribution: distType,
                 presentInRole: presentCount,
                 gross_income: dailyIncome,
                 mode: 'auto',
+                entry_id: entry.entry_id,
                 attendance_rule: dept.attendance_rule,
                 prorate_ratio: dept.attendance_rule === 'monthly' ? `${presentDays}/${daysInMonth}` : undefined,
-                note: `Auto staff: TDA/day × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} auto staff` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
+                note: `Auto entry: TDA/day × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} entries` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
               },
             });
             totalDistributed += share;
@@ -611,68 +609,52 @@ export async function POST(req: Request) {
         }
       }
 
-      // ── PART B: MANUAL STAFF (Amount-based) ──
-      if (manualStaffIds.length > 0) {
-        const { data: manualAmounts } = await supabase
-          .from('department_staff_amounts')
-          .select('staff_id, amount')
-          .eq('department_id', dept.id)
-          .eq('month', month);
-
-        const manualAmountMap: Record<string, number> = {};
-        if (manualAmounts) {
-          for (const ma of manualAmounts) {
-            manualAmountMap[ma.staff_id] = Number(ma.amount) || 0;
-          }
-        }
-
-        // Filter to manual-only staff objects
-        const manualStaff = staffData.filter((s: any) => manualSet.has(s.id));
-
-        // Build role counts for group distribution — MANUAL pool only
+      // ── PART B: MANUAL ENTRIES (Amount embedded in entry) ──
+      if (manualEntries.length > 0) {
+        // Build role counts for group distribution in MANUAL pool
         const manualRoleCounts: Record<string, number> = {};
-        for (const s of manualStaff) {
-          const rk = s.role.toUpperCase().trim();
+        for (const entry of manualEntries) {
+          const rk = entry.role.toUpperCase().trim();
           manualRoleCounts[rk] = (manualRoleCounts[rk] || 0) + 1;
         }
 
-        for (const staff of manualStaff) {
-          const manualAmount = manualAmountMap[staff.id] || 0;
-          // RULE 4: Skip manual staff without amount
-          if (manualAmount <= 0) continue;
+        for (const entry of manualEntries) {
+          // Amount is embedded in the entry object (v2) or from department_staff_amounts (v1 fallback)
+          let manualAmount = Number(entry.amount) || 0;
+          if (manualAmount <= 0) {
+            // V1 fallback: check overrideMap from department_staff_amounts
+            const override = overrideMap[entry.staff_id];
+            if (override) manualAmount = Number(override.amount) || 0;
+          }
+          if (manualAmount <= 0) continue; // Skip entries without amount
 
-          const userRole = staff.role.toUpperCase().trim();
-          const rule = ruleMap[userRole];
-          if (!rule) continue;
-
-          const pctStr = getStaffPercentage(staff, dept.id, rule.percentage);
-          const distType = rule.distribution_type;
+          const pctStr = String(entry.percentage);
+          const distType = entry.dist_type || 'individual';
           let share = 0;
           let poolAmount = 0;
           let presentCount = 1;
 
           if (distType === 'group') {
-            // RULE 3: Group count from MANUAL pool only
-            presentCount = manualRoleCounts[userRole] || 1;
+            presentCount = manualRoleCounts[entry.role.toUpperCase().trim()] || 1;
             poolAmount = computePoolAmount(manualAmount, pctStr);
             share = poolAmount / presentCount;
           } else {
             share = manualAmount * (parsePercentage(pctStr) / 100);
           }
 
-          // Apply Monthly Ratio if applicable (Manual staff is treated as a block)
+          // Apply Monthly Ratio if applicable
           let absentDays = 0;
           for (let d = 1; d <= daysInMonth; d++) {
             const dStr = `${month}-${String(d).padStart(2, '0')}`;
-            if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
+            if (globalLeavesByDate[dStr]?.has(entry.staff_id)) absentDays++;
           }
           const presentDays = daysInMonth - absentDays;
           const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
-          
+
           share = Math.round(share * prorateRatio * 100) / 100;
 
           newResults.push({
-            staff_id: staff.id, department_id: dept.id, date: `${month}-01`,
+            staff_id: entry.staff_id, department_id: dept.id, date: `${month}-01`,
             income_amount: manualAmount, calculation_type: 'rule',
             rule_percentage: pctStr, distribution_type: distType,
             pool_amount: poolAmount, present_count: presentCount,
@@ -682,14 +664,17 @@ export async function POST(req: Request) {
               gross_income: manualAmount,
               dist_type: distType,
               mode: 'manual',
+              role: entry.role,
+              entry_id: entry.entry_id,
               attendance_rule: dept.attendance_rule,
               prorate_ratio: dept.attendance_rule === 'monthly' ? `${presentDays}/${daysInMonth}` : undefined,
-              note: `Manual staff: ₹${manualAmount} × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} manual staff` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
+              note: `Manual entry: ₹${manualAmount} × ${parsePercentage(pctStr)}%${distType === 'group' ? ` ÷ ${presentCount} entries` : ''}${dept.attendance_rule === 'monthly' ? ` × (${presentDays}/${daysInMonth})` : ''}`,
             },
           });
           totalDistributed += share;
         }
       }
+
     } else {
       // ── DAILY INCOME-BASED CALCULATION ──
       for (let day = 1; day <= daysInMonth; day++) {

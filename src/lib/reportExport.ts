@@ -399,14 +399,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   doc.line(12, yPos, pageWidth - 12, yPos);
   yPos += 6;
 
-  // ── Custom Report Heading (if set) ──
-  if (data.report_heading) {
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(data.report_heading, pageWidth / 2, yPos, { align: 'center' });
-    yPos += 8;
-  }
+
 
   // ── Department, Period & Summary (side-by-side for landscape) ──
   doc.setFontSize(11);
@@ -431,6 +424,15 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   const summaryText = `Total Income: ${formatCurrency(data.total_income)}  |  Total Distributed: ${formatCurrency(data.total_distributed)}  |  Staff: ${data.staff.length}  |  Days in Month: ${totalDays}`;
   doc.text(summaryText, 14, yPos);
   yPos += 5;
+
+  // ── Custom Report Heading (if set) ──
+  if (data.report_heading) {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(data.report_heading, 14, yPos);
+    yPos += 6;
+  }
 
   doc.setFontSize(9);
   doc.setTextColor(80, 80, 80);

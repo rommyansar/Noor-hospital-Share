@@ -13,14 +13,23 @@ function getDaysInMonth(yearStr: string, monthStr: string) {
   return new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate();
 }
 
-function getStaffPercentage(staff: any, deptId: string, rulePercentage: string): string {
+function getStaffConfig(staff: any, deptId: string, fallbackRulePercentage: string): { role: string, percentage: string } {
+  let role = staff.role;
+  let percentage = fallbackRulePercentage;
+
   if (staff.department_percentages && typeof staff.department_percentages === 'object') {
-    const override = staff.department_percentages[deptId];
-    if (override && String(override).trim() !== '') {
-      return String(override).trim();
+    const config = staff.department_percentages[deptId];
+    if (config) {
+      if (typeof config === 'object' && config !== null) {
+        if (config.role) role = String(config.role).trim();
+        if (config.percentage) percentage = String(config.percentage).trim();
+      } else if (String(config).trim() !== '') {
+        percentage = String(config).trim();
+      }
     }
   }
-  return rulePercentage;
+
+  return { role, percentage };
 }
 
 // ============================================================
@@ -354,27 +363,37 @@ export async function POST(req: Request) {
       .eq('department_id', dept.id)
       .eq('month', month);
 
+    const overrideStaffIds = new Set<string>();
     const overrideMap = (allOverrides || []).reduce((acc: any, cur: any) => {
       acc[cur.staff_id] = cur;
+      overrideStaffIds.add(cur.staff_id);
       return acc;
     }, {});
 
-    const overrideStaffIds = Object.keys(overrideMap);
+    // Include staff from new JSONB entry formats
+    const checkStaffIds = (arr: any[]) => {
+      if (!Array.isArray(arr)) return;
+      for (const entry of arr) {
+        if (typeof entry === 'object' && entry !== null && entry.staff_id) overrideStaffIds.add(String(entry.staff_id));
+        else if (typeof entry === 'string') overrideStaffIds.add(entry);
+      }
+    };
+    checkStaffIds(totalAmountRow?.manual_staff_ids as any[]);
+    checkStaffIds(totalAmountRow?.auto_staff_ids as any[]);
+
     let allStaffData = primaryStaffData || [];
     
-    // Inject any non-native staff manually added to monthly entry override amounts
-    if (overrideStaffIds.length > 0) {
-      const extraIds = overrideStaffIds.filter(id => !allStaffData.find((s: any) => s.id === id));
-      if (extraIds.length > 0) {
-        const { data: extraStaff } = await supabase.from('staff').select('*').in('id', extraIds).eq('is_active', true);
-        if (extraStaff) {
-          allStaffData = [...allStaffData, ...extraStaff];
-        }
+    // Inject any non-native staff manually added
+    const extraIds = Array.from(overrideStaffIds).filter(id => !allStaffData.find((s: any) => s.id === id));
+    if (extraIds.length > 0) {
+      const { data: extraStaff } = await supabase.from('staff').select('*').in('id', extraIds).eq('is_active', true);
+      if (extraStaff) {
+        allStaffData = [...allStaffData, ...extraStaff];
       }
     }
 
     const staffData = allStaffData;
-    if (staffData.length === 0) continue;
+    if (staffData.length === 0 && dept.calculation_method !== 'auto_manual') continue;
 
     const newResults: any[] = [];
 
@@ -414,7 +433,8 @@ export async function POST(req: Request) {
         // Count staff per role for group distribution
         const staffCountByRole: Record<string, number> = {};
         for (const s of staffData) {
-          const rk = s.role.toUpperCase().trim();
+          const { role: configuredRole } = getStaffConfig(s, dept.id, '0');
+          const rk = configuredRole.toUpperCase().trim();
           staffCountByRole[rk] = (staffCountByRole[rk] || 0) + 1;
         }
 
@@ -422,16 +442,20 @@ export async function POST(req: Request) {
           const stored = amounts.find((a: any) => a.staff_id === staff.id);
           if (!stored || stored.amount <= 0) continue;
 
-          const userRole = staff.role.toUpperCase().trim();
+          // Resolve role and percentage dynamically for this department
+          const fallbackRulePct = ruleMap[staff.role?.toUpperCase().trim()]?.percentage || '0';
+          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staff, dept.id, fallbackRulePct);
+          const userRole = configuredRole.toUpperCase().trim();
+          
           const rule = ruleMap[userRole];
           if (!rule) continue;
 
           const override = overrideMap[staff.id];
-          // Always use rule's distribution_type — override rows default to 'individual' in DB
+          // Always use rule's distribution_type
           const distType = rule.distribution_type;
           const pctStr = override?.percentage !== null && override?.percentage !== undefined
             ? override.percentage.toString()
-            : getStaffPercentage(staff, dept.id, rule.percentage);
+            : configuredPct;
 
           // Calculate attendance
           let absentDays = 0;
@@ -581,7 +605,11 @@ export async function POST(req: Request) {
               if (globalLeavesByDate[dStr]?.has(entry.staff_id)) absentDays++;
             }
             const presentDays = daysInMonth - absentDays;
-            const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
+            
+            // Prevent double-deduction: If this specific day's attendance is explicitly dictated by presentStaffIds,
+            // DO NOT apply the global monthly prorate ratio on top of their share for this day.
+            const isExplicitDay = presentStaffIds !== null;
+            const prorateRatio = (dept.attendance_rule === 'monthly' && !isExplicitDay) ? (presentDays / daysInMonth) : 1;
 
             share = Math.round(share * prorateRatio * 100) / 100;
 
@@ -705,7 +733,8 @@ export async function POST(req: Request) {
 
         const presentCountByRole: Record<string, number> = {};
         for (const s of presentStaff) {
-          const rk = s.role.toUpperCase().trim();
+          const { role: configuredRole } = getStaffConfig(s, dept.id, '0');
+          const rk = configuredRole.toUpperCase().trim();
           presentCountByRole[rk] = (presentCountByRole[rk] || 0) + 1;
         }
 
@@ -736,16 +765,20 @@ export async function POST(req: Request) {
 
         for (const staff of presentStaff) {
           if (workByStaff[staff.id]) continue;
-          const userRole = staff.role.toUpperCase().trim();
+          
+          const fallbackRulePct = ruleMap[staff.role?.toUpperCase().trim()]?.percentage || '0';
+          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staff, dept.id, fallbackRulePct);
+          const userRole = configuredRole.toUpperCase().trim();
+
           const rule = ruleMap[userRole];
           if (!rule) continue;
 
           const override = overrideMap[staff.id];
-          // Always use rule's distribution_type — override rows default to 'individual' in DB
+          // Always use rule's distribution_type
           const distType = rule.distribution_type;
           const pctStr = override?.percentage !== null && override?.percentage !== undefined
             ? override.percentage.toString()
-            : getStaffPercentage(staff, dept.id, rule.percentage);
+            : configuredPct;
 
           let share = 0;
           let poolAmount = 0;
@@ -766,7 +799,11 @@ export async function POST(req: Request) {
             if (globalLeavesByDate[dStr]?.has(staff.id)) absentDays++;
           }
           const presentDays = daysInMonth - absentDays;
-          const prorateRatio = dept.attendance_rule === 'monthly' ? (presentDays / daysInMonth) : 1;
+          
+          // Prevent double-deduction: If this specific day's attendance is explicitly dictated by present_staff_ids,
+          // DO NOT apply the global monthly prorate ratio on top of their share for this day.
+          const isExplicitDay = dayData && dayData.present_staff_ids && Array.isArray(dayData.present_staff_ids) && dayData.present_staff_ids.length > 0;
+          const prorateRatio = (dept.attendance_rule === 'monthly' && !isExplicitDay) ? (presentDays / daysInMonth) : 1;
           
           share = Math.round(share * prorateRatio * 100) / 100;
 
@@ -793,10 +830,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Deduplicate results: keep only the last entry per (staff_id, date, department_id)
+    // Deduplicate results: keep only the last entry per (staff_id, date, department_id, entry_id)
     const deduped = new Map<string, any>();
     for (const r of newResults) {
-      const key = `${r.staff_id}|${r.date}|${r.department_id}`;
+      const entryIdSuffix = r.breakdown?.entry_id ? `|${r.breakdown.entry_id}` : '';
+      const key = `${r.staff_id}|${r.date}|${r.department_id}${entryIdSuffix}`;
       if (deduped.has(key)) {
         // Merge: sum the final_share values
         const existing = deduped.get(key);

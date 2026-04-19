@@ -182,7 +182,14 @@ export async function POST(req: Request) {
 
         const roleCounts: Record<string, number> = {};
         (addonStaff || []).forEach((s: any) => {
-          const rk = s.role.toUpperCase().trim();
+          let role = s.role || 'Unknown';
+          if (s.department_percentages && typeof s.department_percentages === 'object') {
+            const config = s.department_percentages[addon.addon_department_id];
+            if (config && typeof config === 'object' && config.role) {
+              role = String(config.role).trim();
+            }
+          }
+          const rk = role.toUpperCase().trim();
           roleCounts[rk] = (roleCounts[rk] || 0) + 1;
         });
 
@@ -276,7 +283,7 @@ export async function POST(req: Request) {
               present_count: staffCount,
               final_share: share,
               breakdown: {
-                role: staff.role,
+                role: (staff.department_percentages && staff.department_percentages[addon.addon_department_id]?.role) || staff.role,
                 percentage: `${addonPct}%`,
                 type: 'addon_share',
                 note: `Add-on: ${addonDeptName} ${noteExtra}`,

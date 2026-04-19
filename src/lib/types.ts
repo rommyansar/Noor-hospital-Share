@@ -33,7 +33,7 @@ export interface Staff {
   role: string;
   is_active: boolean;
   staff_code?: string;
-  department_percentages?: Record<string, string>;
+  department_percentages?: Record<string, any>;
   created_at: string;
 
   updated_at: string;
@@ -174,7 +174,7 @@ export interface StaffForm {
   name: string;
   department_id: string;
   department_ids?: string[];
-  department_percentages?: Record<string, string>;
+  department_percentages?: Record<string, any>;
   staff_code?: string;
   role: string;
   is_active: boolean;

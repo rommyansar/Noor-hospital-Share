@@ -305,32 +305,51 @@ export default function StaffPage() {
                         {d.name}
                       </span>
                     </label>
-                    {isSelected && (
+                    {isSelected && (() => {
+                      const val = form.department_percentages?.[d.id];
+                      const r = typeof val === 'object' && val !== null ? (val.role || '') : '';
+                      const p = typeof val === 'object' && val !== null ? (val.percentage || '') : (val || '');
+                      return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
-                        <input
-                          type="number"
-                          placeholder="Rule %"
-                          title="Override department rule % for this staff"
+                        <select
                           className="input-field"
-                          style={{ width: '80px', padding: '4px 8px', fontSize: '13px' }}
-                          value={form.department_percentages?.[d.id] || ''}
+                          value={r}
                           onChange={(e) => setForm({
                             ...form,
                             department_percentages: {
                               ...(form.department_percentages || {}),
-                              [d.id]: e.target.value
+                              [d.id]: { role: e.target.value, percentage: p }
+                            }
+                          })}
+                          style={{ width: '120px', padding: '4px 8px', fontSize: '12px' }}
+                        >
+                          <option value="">Default Role</option>
+                          {existingRoles.map(er => <option key={er} value={er}>{er}</option>)}
+                        </select>
+                        <input
+                          type="number"
+                          placeholder="%"
+                          className="input-field"
+                          style={{ width: '60px', padding: '4px 8px', fontSize: '13px' }}
+                          value={p}
+                          onChange={(e) => setForm({
+                            ...form,
+                            department_percentages: {
+                              ...(form.department_percentages || {}),
+                              [d.id]: { role: r, percentage: e.target.value }
                             }
                           })}
                         />
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )})}
               </div>
             </div>
 
             <div className="form-group mt-4">
-              <label className="form-label">Role</label>
+              <label className="form-label">Primary Designation (Global Default)</label>
               <input
                 className="input-field"
                 value={form.role}

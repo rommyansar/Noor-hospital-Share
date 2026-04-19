@@ -339,7 +339,7 @@ export default function MonthlyEntryPage() {
       });
 
       // Save Dept Total Amount, Applied Rules, and Structured Entries
-      await fetch('/api/monthly-totals', {
+      const totalsRes = await fetch('/api/monthly-totals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -353,6 +353,11 @@ export default function MonthlyEntryPage() {
           manual_staff_ids: isAutoManual ? manualEntries : []
         })
       });
+      if (!totalsRes.ok) {
+        const errBody = await totalsRes.json().catch(() => ({}));
+        console.error('monthly-totals save failed:', errBody);
+        throw new Error(errBody.error || 'Failed to save monthly totals');
+      }
 
       addToast('success', 'Monthly entry saved successfully');
       // Re-fetch ALL data AFTER all saves complete to avoid race conditions
@@ -750,7 +755,7 @@ export default function MonthlyEntryPage() {
               <div style={{ fontSize: '18px', marginBottom: '8px' }}>🚀</div>
               <h3 style={{ fontSize: '15px', color: '#60a5fa', margin: '0 0 4px 0' }}>Complex Hybrid Calculation</h3>
               <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, maxWidth: '600px', display: 'inline-block' }}>
-                Preview is currently disabled for Auto + Manual mode due to complex isolated pool distribution and daily TDA distribution rules. Save the month and generate the report to view the final shares!
+                Preview is currently disabled for Manual Staff Entry mode. Save the month and generate the report to view the final shares!
               </p>
             </div>
           );
@@ -1384,7 +1389,7 @@ export default function MonthlyEntryPage() {
                 {[
                   { key: 'income', label: '🏥 Day / Department Income', desc: 'Enter daily income for the department' },
                   { key: 'staff_based', label: '👤 Staff Income-wise', desc: 'Enter income per staff member directly' },
-                  { key: 'auto_manual', label: '🎛️ Auto + Manual Staff', desc: 'Manage isolated Auto and Manual calculated staff pools' }
+                  { key: 'auto_manual', label: '📝 Manual Staff Entry', desc: 'Add staff with custom roles, percentages and fixed amounts' }
                 ].map(opt => {
                   const isActive = opt.key === selectedDepartmentData?.calculation_method || 
                                   (!selectedDepartmentData?.calculation_method && opt.key === 'income');
@@ -1525,94 +1530,9 @@ export default function MonthlyEntryPage() {
           <div style={{ overflowX: 'auto' }}>
             {isAutoManual ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                  <div style={{ padding: '12px 20px', background: 'rgba(59, 130, 246, 0.1)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#60a5fa' }}>⚡ Auto-Distributed Entries</h4>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>TDA ÷ Days • {autoEntries.length} entries</span>
-                  </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
-                        <th style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' }}>Staff</th>
-                        <th style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', width: '160px' }}>Role</th>
-                        <th style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', width: '90px' }}>%</th>
-                        <th style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', width: '120px' }}>Distribution</th>
-                        <th style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', width: '50px' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {autoEntries.length === 0 ? (
-                        <tr><td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No auto entries. Add staff below.</td></tr>
-                      ) : autoEntries.map((entry, idx) => {
-                        const staffObj = globalStaffList.find(s => s.id === entry.staff_id);
-                        return (
-                          <tr key={entry.entry_id} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
-                            <td style={{ padding: '8px 16px', fontWeight: 500, color: '#f8fafc', fontSize: '13px' }}>
-                              <div style={{ fontWeight: 600 }}>{staffObj?.name || 'Unknown'}</div>
-                              <div style={{ color: '#64748b', fontSize: '10px' }}>{staffObj?.staff_code || ''} • {staffObj?.role || ''}</div>
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <input type="text" className="text-input" style={{ height: '32px', fontSize: '12px', width: '100%' }}
-                                value={entry.role}
-                                onChange={(e) => { const next = [...autoEntries]; next[idx] = { ...next[idx], role: e.target.value }; setAutoEntries(next); }}
-                              />
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <input type="number" className="text-input" style={{ height: '32px', fontSize: '12px', width: '100%' }} min="0" max="100" step="0.01"
-                                value={entry.percentage}
-                                onChange={(e) => { const next = [...autoEntries]; next[idx] = { ...next[idx], percentage: parseFloat(e.target.value) || 0 }; setAutoEntries(next); }}
-                              />
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <select className="select-field" style={{ height: '32px', fontSize: '11px' }}
-                                value={entry.dist_type}
-                                onChange={(e) => { const next = [...autoEntries]; next[idx] = { ...next[idx], dist_type: e.target.value as 'individual' | 'group' }; setAutoEntries(next); }}
-                              >
-                                <option value="individual">Individual</option>
-                                <option value="group">Group</option>
-                              </select>
-                            </td>
-                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                              <button onClick={() => setAutoEntries(prev => prev.filter((_, i) => i !== idx))}
-                                style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '4px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '14px' }}>×</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
-                        <td colSpan={5} style={{ padding: '10px 16px', borderTop: '1px solid rgba(71, 85, 105, 0.2)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>+ Add Auto Entry:</span>
-                            <select className="select-field" style={{ maxWidth: '280px', height: '32px', fontSize: '12px' }} value=""
-                              onChange={(e) => {
-                                if (!e.target.value) return;
-                                const staffObj = globalStaffList.find(s => s.id === e.target.value);
-                                if (!staffObj) return;
-                                const matchedRule = deptRules.find(r => r.role.toUpperCase().trim() === staffObj.role.toUpperCase().trim());
-                                setAutoEntries(prev => [...prev, {
-                                  entry_id: crypto.randomUUID(),
-                                  staff_id: staffObj.id,
-                                  role: staffObj.role,
-                                  percentage: matchedRule ? Number(matchedRule.percentage) : 0,
-                                  dist_type: (matchedRule?.distribution_type as 'individual' | 'group') || 'individual',
-                                }]);
-                              }}
-                            >
-                              <option value="">-- Select Staff --</option>
-                              {globalStaffList.map(s => (
-                                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
                 <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
                   <div style={{ padding: '12px 20px', background: 'rgba(245, 158, 11, 0.1)', borderBottom: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f59e0b' }}>💰 Manual-Distributed Entries</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f59e0b' }}>📝 Staff Entries</h4>
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>Fixed Amounts • {manualEntries.length} entries</span>
                   </div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -1708,58 +1628,6 @@ export default function MonthlyEntryPage() {
                   </table>
                 </div>
 
-                <div className="glass-card" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                  <div style={{ padding: '12px 20px', background: 'rgba(16, 185, 129, 0.1)', borderBottom: '1px solid rgba(16, 185, 129, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#10b981' }}>Daily Income & Attendance Overrides</h4>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>For Auto Staff Pool</span>
-                  </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
-                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
-                        <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
-                        {attendanceRule !== 'none' && (
-                          <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff (Auto)</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from({ length: totalDays }).map((_, i) => {
-                        const day = i + 1;
-                        const dateStr = `${monthStr}-${String(day).padStart(2, '0')}`;
-                        const state = incomes[dateStr];
-                        const amount = state?.amount || '';
-                        const explicitPresent = state?.present_staff_ids;
-                        const leavesCount = leavesByDate[dateStr]?.size || 0;
-                        let presentText = '';
-                        if (explicitPresent) {
-                          presentText = `${explicitPresent.length}/${uniqueAutoStaff.length} Selected (Manual)`;
-                        } else {
-                          presentText = `${uniqueAutoStaff.length - leavesCount}/${uniqueAutoStaff.length} Expected (Auto)`;
-                        }
-                        return (
-                          <tr key={day} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
-                            <td style={{ padding: '10px 20px', fontWeight: 600, color: '#cbd5e1', fontSize: '14px' }}>{day}</td>
-                            <td style={{ padding: '10px 20px' }}>
-                              <div style={{ position: 'relative', maxWidth: '200px' }}>
-                                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '13px', fontWeight: 600 }}>₹</span>
-                                <input type="number" className="text-input" style={{ paddingLeft: '24px', height: '36px', fontSize: '14px' }} value={amount} onChange={(e) => handleIncomeChange(day, e.target.value)} placeholder="0" min="0" step="0.01" />
-                              </div>
-                            </td>
-                            {attendanceRule !== 'none' && (
-                              <td style={{ padding: '10px 20px', textAlign: 'right' }}>
-                                <button className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openModal(dateStr)} style={{ padding: '6px 12px', fontSize: '13px' }}>
-                                  <Users size={14} style={{ marginRight: '6px' }} />
-                                  {presentText}
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
 
               </div>
             ) : isStaffBased ? (
@@ -1883,9 +1751,7 @@ export default function MonthlyEntryPage() {
                   <tr style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.2)', background: 'rgba(15, 23, 42, 0.3)' }}>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '80px' }}>Date</th>
                     <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', width: '250px' }}>Dept Income</th>
-                    {attendanceRule !== 'none' && (
-                      <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff</th>
-                    )}
+                    <th style={{ padding: '12px 20px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', textAlign: 'right' }}>Present Staff</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1928,8 +1794,7 @@ export default function MonthlyEntryPage() {
                             />
                           </div>
                         </td>
-                        {attendanceRule !== 'none' && (
-                          <td style={{ padding: '10px 20px', textAlign: 'right' }}>
+                        <td style={{ padding: '10px 20px', textAlign: 'right' }}>
                             <button 
                               className={`btn ${explicitPresent ? 'btn-primary' : 'btn-secondary'}`} 
                               onClick={() => openModal(dateStr)}
@@ -1939,7 +1804,6 @@ export default function MonthlyEntryPage() {
                               {presentText}
                             </button>
                           </td>
-                        )}
                       </tr>
                     );
                   })}

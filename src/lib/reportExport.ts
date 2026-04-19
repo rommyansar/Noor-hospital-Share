@@ -69,6 +69,7 @@ export interface ReportExportData {
   total_income: number;
   total_distributed: number;
   staff: StaffReportData[];
+  report_heading?: string;
 }
 
 export type ReportType = 'normal' | 'detailed';
@@ -258,8 +259,11 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     [`Reporting Period: ${getMonthYear(data)}`],
     [`Total Department Income: ${formatCurrency(data.total_income)}    |    Total Distributed: ${formatCurrency(data.total_distributed)}    |    Staff Count: ${data.staff.length}`],
     ['(All calculations are based on approved hospital share policy)'],
-    [],
   ];
+  if (data.report_heading) {
+    headerRows.push([data.report_heading]);
+  }
+  headerRows.push([]);
 
   let sheetData: (string | number)[][];
 
@@ -338,7 +342,7 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
 
   // Merge header cells — always 6 columns for normal, 13 for detailed
   const colCount = type === 'normal' ? 6 : 13;
-  ws['!merges'] = [
+  const merges = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Hospital name
     { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, // Report title
     { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } }, // Department
@@ -346,6 +350,10 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
     { s: { r: 5, c: 0 }, e: { r: 5, c: colCount - 1 } }, // Summary
     { s: { r: 6, c: 0 }, e: { r: 6, c: colCount - 1 } }, // Policy note
   ];
+  if (data.report_heading) {
+    merges.push({ s: { r: 7, c: 0 }, e: { r: 7, c: colCount - 1 } }); // Custom heading
+  }
+  ws['!merges'] = merges;
 
   const sheetName = type === 'normal' ? 'Normal Report' : 'Detailed Report';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -391,33 +399,44 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   doc.line(12, yPos, pageWidth - 12, yPos);
   yPos += 6;
 
+  // ── Custom Report Heading (if set) ──
+  if (data.report_heading) {
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(data.report_heading, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+  }
+
   // ── Department, Period & Summary (side-by-side for landscape) ──
-  doc.setFontSize(10);
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
   doc.text(`Department: ${data.department_name}`, 14, yPos);
   
   if (isDetailed) {
     doc.text(`Period: ${getMonthYear(data)}`, pageWidth / 2 - 20, yPos);
     doc.text(`Generated: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, pageWidth - 14, yPos, { align: 'right' });
   } else {
-    yPos += 5;
+    yPos += 6;
     doc.text(`Reporting Period: ${getMonthYear(data)}`, 14, yPos);
   }
-  yPos += 5;
+  yPos += 6;
 
   // Summary row
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
   const totalDays = getDaysInMonth(data.year, data.month);
   const summaryText = `Total Income: ${formatCurrency(data.total_income)}  |  Total Distributed: ${formatCurrency(data.total_distributed)}  |  Staff: ${data.staff.length}  |  Days in Month: ${totalDays}`;
   doc.text(summaryText, 14, yPos);
-  yPos += 4;
+  yPos += 5;
 
-  doc.setFontSize(8);
-  doc.setTextColor(120, 120, 120);
-  doc.text('All calculations are based on approved hospital share policy. Amounts in Indian Rupees (₹).', 14, yPos);
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text('All calculations are based on approved hospital share policy. Amounts in Indian Rupees (Rs.).', 14, yPos);
   doc.setTextColor(0, 0, 0);
-  yPos += 6;
+  yPos += 7;
 
   // ── Table ──
   if (type === 'normal') {
@@ -443,17 +462,19 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       theme: 'grid',
       styles: {
         overflow: 'linebreak',
+        textColor: [0, 0, 0],
       },
       headStyles: {
         fillColor: [16, 185, 129],
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 8,
+        fontSize: 10,
         halign: 'center',
       },
       bodyStyles: {
-        fontSize: 8,
+        fontSize: 10,
         cellPadding: 3,
+        textColor: [0, 0, 0],
       },
       columnStyles: colStyles,
       alternateRowStyles: {
@@ -562,18 +583,18 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
           fillColor: [30, 41, 59], // slate-800
           textColor: [255, 255, 255],
           fontStyle: 'bold',
-          fontSize: 8.5,
+          fontSize: 10,
           halign: 'center',
           cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 },
           lineWidth: 0.1,
           lineColor: [71, 85, 105],
         },
         bodyStyles: {
-          fontSize: 8.5,
+          fontSize: 10,
           cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
           lineWidth: 0.1,
           lineColor: [203, 213, 225],
-          textColor: [15, 23, 42],
+          textColor: [0, 0, 0],
         },
         footStyles: {
           fillColor: [241, 245, 249],

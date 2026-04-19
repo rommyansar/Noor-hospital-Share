@@ -108,6 +108,7 @@ export default function OTEntryPage() {
   const [addonStaffMap, setAddonStaffMap] = useState<Record<string, Staff[]>>({});
   const [incomesMap, setIncomesMap] = useState<Record<string, DailyIncome[]>>({});
   const [leavesList, setLeavesList] = useState<StaffLeave[]>([]);
+  const [reportHeading, setReportHeading] = useState<string>('');
 
   // Global Headers
   const [gDocPct, setGDocPct] = useState<number>(0);
@@ -148,11 +149,12 @@ export default function OTEntryPage() {
     if (!selectedDept || !isAllowedDept) return;
     setLoading(true); setError(null);
     try {
-      const [staffRes, casesRes, addonsRes, leavesRes] = await Promise.all([
+      const [staffRes, casesRes, addonsRes, leavesRes, totalsRes] = await Promise.all([
         fetch('/api/staff'),
         fetch(`/api/ot-cases?month=${monthStr}&department_id=${selectedDept}`),
         fetch(`/api/ot-monthly-addons?month=${monthStr}&department_id=${selectedDept}`),
-        fetch(`/api/leaves?month=${monthStr}`)
+        fetch(`/api/leaves?month=${monthStr}`),
+        fetch(`/api/monthly-totals?department_id=${selectedDept}&month=${monthStr}`)
       ]);
       
       const stData = await staffRes.json();
@@ -205,6 +207,14 @@ export default function OTEntryPage() {
       setAddonRulesMap(aRulesMap);
       setAddonStaffMap(aStaffMap);
       setIncomesMap(iMap);
+
+      // Load report heading from monthly totals
+      if (totalsRes.ok) {
+        const totalsData = await totalsRes.json();
+        setReportHeading(totalsData?.report_heading || '');
+      } else {
+        setReportHeading('');
+      }
 
     } catch (err: any) {
       setError(err.message);
@@ -398,6 +408,20 @@ export default function OTEntryPage() {
       }
 
       addToast('success', 'OT Entry saved successfully!');
+
+      // Save report heading to monthly totals
+      if (reportHeading !== undefined) {
+        await fetch('/api/monthly-totals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            department_id: selectedDept,
+            month: monthStr,
+            report_heading: reportHeading || null,
+          })
+        });
+      }
+
       await fetchData();
     } catch (err: any) {
       setError(err.message);
@@ -587,6 +611,21 @@ export default function OTEntryPage() {
             </select>
           </div>
         </div>
+        {/* Report Heading Input */}
+        {selectedDept && isAllowedDept && (
+          <div style={{ marginTop: '16px' }}>
+            <label className="form-label text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Report Heading (optional)</label>
+            <input
+              type="text"
+              className="input-field w-full"
+              value={reportHeading}
+              onChange={(e) => setReportHeading(e.target.value)}
+              placeholder="e.g. Special Note for March OT Report"
+              style={{ fontSize: '14px', padding: '10px 16px' }}
+            />
+            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>This text will appear as a heading in the PDF/Excel report.</p>
+          </div>
+        )}
       </div>
 
       {/* ── Error: Not Allowed ── */}

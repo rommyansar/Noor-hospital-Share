@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   // Fetch department name, monthly total, income data, and work entries ALL in parallel
   const [deptRes, deptTotalRes, incomeRes, workEntriesRes, otCasesRes] = await Promise.all([
     supabase.from('departments').select('name, calculation_method').eq('id', deptId).single(),
-    supabase.from('department_monthly_totals').select('total_amount').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
+    supabase.from('department_monthly_totals').select('total_amount, report_heading').eq('department_id', deptId).eq('month', monthStr).maybeSingle(),
     supabase.from('daily_income').select('amount').eq('department_id', deptId).gte('date', startDate).lt('date', endDate),
     supabase.from('staff_work_entries').select('*').eq('department_id', deptId).gte('date', startDate).lt('date', endDate).order('date'),
     // Also check if this dept has OT cases (for income calculation)
@@ -417,6 +417,7 @@ export async function GET(req: Request) {
     total_income: Math.round(totalIncome * 100) / 100,
     total_distributed: Math.round(totalDistributed * 100) / 100,
     staff_count: aggregated.length,
+    report_heading: deptTotalRes.data?.report_heading || null,
     staff: aggregated.map((s) => ({
       ...s,
       total_share: Math.round(s.total_share * 100) / 100,

@@ -43,6 +43,7 @@ interface ReportData {
   total_income: number;
   total_distributed: number;
   staff_count: number;
+  report_heading?: string | null;
   staff: StaffReport[];
 }
 
@@ -111,6 +112,7 @@ export default function ReportsPage() {
       total_income: report.total_income,
       total_distributed: report.total_distributed,
       staff: report.staff,
+      report_heading: report.report_heading || undefined,
     };
   };
 

@@ -47,6 +47,7 @@ export default function MonthlyEntryPage() {
   const [deptRules, setDeptRules] = useState<DepartmentRule[]>([]);
   const [appliedMainRules, setAppliedMainRules] = useState<string[]>([]);
   const [isLocked, setIsLocked] = useState(false);
+  const [reportHeading, setReportHeading] = useState<string>('');
 
   // Addon State
   const [addons, setAddons] = useState<any[]>([]);
@@ -98,12 +99,14 @@ export default function MonthlyEntryPage() {
         setDeptTotalAmount(dtData?.total_amount ? dtData.total_amount.toString() : '');
         setAppliedMainRules(dtData?.applied_rules || []);
         setIsLocked(!!dtData?.is_locked);
+        setReportHeading(dtData?.report_heading || '');
         rawAutoEntries = dtData?.auto_staff_ids || [];
         rawManualEntries = dtData?.manual_staff_ids || [];
       } else {
         setDeptTotalAmount('');
         setAppliedMainRules([]);
         setIsLocked(false);
+        setReportHeading('');
       }
 
       // Process Staff
@@ -348,6 +351,7 @@ export default function MonthlyEntryPage() {
           total_amount: parseFloat(deptTotalAmount) || 0,
           applied_rules: appliedMainRules,
           is_locked: isLocked,
+          report_heading: reportHeading || null,
           // For auto_manual: save full structured entry objects
           auto_staff_ids: isAutoManual ? autoEntries : [],
           manual_staff_ids: isAutoManual ? manualEntries : []
@@ -666,6 +670,18 @@ export default function MonthlyEntryPage() {
                 placeholder="e.g. 50000"
                 style={{ fontSize: '18px', fontWeight: 700, padding: '12px 16px' }}
               />
+            </div>
+            <div>
+              <label className="form-label text-xs">Report Heading (optional)</label>
+              <input
+                type="text"
+                className="input-field"
+                value={reportHeading}
+                onChange={(e) => setReportHeading(e.target.value)}
+                placeholder="e.g. Special Note for March Report"
+                style={{ fontSize: '14px', padding: '12px 16px' }}
+              />
+              <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>This text will appear as a heading in the PDF/Excel report.</p>
             </div>
           </div>
         </div>

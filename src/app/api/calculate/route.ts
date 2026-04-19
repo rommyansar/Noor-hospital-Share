@@ -503,7 +503,7 @@ export async function POST(req: Request) {
               total_days: daysInMonth,
               present_days: presentDays,
               absent_days: absentDays,
-              prorate_ratio: applyProration ? `${presentDays}/${totalWorkingDays} (Applied in UI)` : undefined,
+              prorate_ratio: applyProration ? `${presentDays}/${totalWorkingDays}` : undefined,
               applied_ratio_multiplier: 1,
             },
           });

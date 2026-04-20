@@ -248,21 +248,23 @@ export async function POST(req: Request) {
           let noteExtra = '';
 
           if (excludeMainDays || attRule !== 'none') {
-            // Both TDA and Manual use the same income-weighted approach:
-            // 1. Sum OT income only for valid (non-excluded) days for THIS staff
+            // Both TDA and Manual use the same absolute deduction approach:
             let validIncome = 0;
+            let excludedIncome = 0;
             for (let d = 1; d <= daysInMonth; d++) {
               const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+              const dayIncome = otIncomeByDate[dateStr] || 0;
               if (!excludedDates.has(dateStr)) {
-                validIncome += (otIncomeByDate[dateStr] || 0);
+                validIncome += dayIncome;
+              } else {
+                excludedIncome += dayIncome;
               }
             }
             if (isManual) {
-              // Manual: prorate manual amount by income-weight ratio
-              adjustedBase = totalOTIncome > 0
-                ? Math.round(globalBase * (validIncome / totalOTIncome) * 100) / 100
-                : 0;
-              noteExtra = `(₹${Math.round(validIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')}${conflictDayCount > 0 ? `, ${conflictDayCount} conflict days excluded` : ''})`;
+              // Manual: subtract the EXACT excluded OT income from the manual base
+              // This guarantees the absolute deduction matches TDA mode behavior
+              adjustedBase = Math.max(0, globalBase - excludedIncome);
+              noteExtra = `(-₹${Math.round(excludedIncome).toLocaleString('en-IN')} from base${conflictDayCount > 0 ? ` for ${conflictDayCount} conflict days` : ''})`;
             } else {
               // TDA: use valid income directly as the base
               adjustedBase = validIncome;

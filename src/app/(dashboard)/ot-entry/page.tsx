@@ -554,18 +554,19 @@ export default function OTEntryPage() {
         let adjustedBase = globalBase;
 
         if (excludeMainDays || attRule !== 'none') {
-          if (isManual) {
-            // Prorate manual amount by valid days
-            adjustedBase = totalDays > 0 ? Math.round(globalBase * (validDays / totalDays) * 100) / 100 : 0;
-          } else {
-            // TDA: sum OT income only for valid (non-excluded) days
-            let validIncome = 0;
-            for (let d = 1; d <= totalDays; d++) {
-              const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
-              if (!excludedDates.has(dateStr)) {
-                validIncome += (otIncomeByDate[dateStr] || 0);
-              }
+          // Both TDA and Manual use the same income-weighted approach
+          let validIncome = 0;
+          for (let d = 1; d <= totalDays; d++) {
+            const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
+            if (!excludedDates.has(dateStr)) {
+              validIncome += (otIncomeByDate[dateStr] || 0);
             }
+          }
+          if (isManual) {
+            // Manual: prorate by income-weight ratio
+            adjustedBase = totalOtSum > 0 ? Math.round(globalBase * (validIncome / totalOtSum) * 100) / 100 : 0;
+          } else {
+            // TDA: use valid income directly
             adjustedBase = validIncome;
           }
         }

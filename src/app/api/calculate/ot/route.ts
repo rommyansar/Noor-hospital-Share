@@ -248,21 +248,23 @@ export async function POST(req: Request) {
           let noteExtra = '';
 
           if (excludeMainDays || attRule !== 'none') {
-            if (isManual) {
-              // Prorate manual amount by valid days for THIS staff
-              adjustedBase = daysInMonth > 0
-                ? Math.round(globalBase * (validDays / daysInMonth) * 100) / 100
-                : 0;
-              noteExtra = `(${validDays}/${daysInMonth} valid days${conflictDayCount > 0 ? `, ${conflictDayCount} conflict` : ''})`;
-            } else {
-              // TDA: sum OT income only for valid (non-excluded) days for THIS staff
-              let validIncome = 0;
-              for (let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${month}-${String(d).padStart(2, '0')}`;
-                if (!excludedDates.has(dateStr)) {
-                  validIncome += (otIncomeByDate[dateStr] || 0);
-                }
+            // Both TDA and Manual use the same income-weighted approach:
+            // 1. Sum OT income only for valid (non-excluded) days for THIS staff
+            let validIncome = 0;
+            for (let d = 1; d <= daysInMonth; d++) {
+              const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+              if (!excludedDates.has(dateStr)) {
+                validIncome += (otIncomeByDate[dateStr] || 0);
               }
+            }
+            if (isManual) {
+              // Manual: prorate manual amount by income-weight ratio
+              adjustedBase = totalOTIncome > 0
+                ? Math.round(globalBase * (validIncome / totalOTIncome) * 100) / 100
+                : 0;
+              noteExtra = `(₹${Math.round(validIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')}${conflictDayCount > 0 ? `, ${conflictDayCount} conflict days excluded` : ''})`;
+            } else {
+              // TDA: use valid income directly as the base
               adjustedBase = validIncome;
               noteExtra = `(₹${Math.round(validIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')}${conflictDayCount > 0 ? `, ${conflictDayCount} conflict days excluded` : ''})`;
             }

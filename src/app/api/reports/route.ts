@@ -369,19 +369,20 @@ export async function GET(req: Request) {
     // Display percentage
     const allPcts: string[] = [];
     if (rawCases.length > 0) {
-      const uniquePcts: string[] = [...new Set<string>(rawCases.map((rc: any) => `${rc.pct}%`))];
-      allPcts.push(...uniquePcts);
-    } else if (staff.rule_entries && staff.rule_entries.length > 0) {
-      const uniquePcts: string[] = [...new Set<string>(staff.rule_entries.map((re: any) => `${parseFloat(re.percentage) || 0}%`))];
-      allPcts.push(...uniquePcts);
-    } else if (staff.work_entries && staff.work_entries.length > 0) {
-      const uniquePcts: string[] = [...new Set<string>(staff.work_entries.map((we: any) => `${parseFloat(we.percentage) || 0}%`))];
-      allPcts.push(...uniquePcts);
-    } else if (uniqueAddons.length > 0) {
-      // Add-on-only staff: show add-on percentages
-      const uniquePcts: string[] = [...new Set<string>(uniqueAddons.map((ac: any) => `${parseFloat(String(ac.pct).replace('%', '')) || 0}%`))];
-      allPcts.push(...uniquePcts);
+      allPcts.push(...rawCases.map((rc: any) => `${parseFloat(rc.pct)}%`));
     }
+    if (staff.rule_entries && staff.rule_entries.length > 0) {
+      allPcts.push(...staff.rule_entries.map((re: any) => `${parseFloat(re.percentage) || 0}%`));
+    }
+    if (staff.work_entries && staff.work_entries.length > 0) {
+      allPcts.push(...staff.work_entries.map((we: any) => `${parseFloat(we.percentage) || 0}%`));
+    }
+    if (uniqueAddons.length > 0) {
+      allPcts.push(...uniqueAddons.map((ac: any) => `${parseFloat(String(ac.pct).replace('%', '')) || 0}%`));
+    }
+    
+    // Deduplicate array to show all distinct percentages applied to this staff
+    const uniqueDisplayPcts = [...new Set(allPcts)];
 
     // Compute division info
     let divisionInfo = 'Individual (no division)';
@@ -405,7 +406,7 @@ export async function GET(req: Request) {
 
     staff.breakdown_lines = lines;
     staff.working_amount = Math.round(workingAmount);
-    staff.display_percentage = allPcts.join(', ');
+    staff.display_percentage = uniqueDisplayPcts.join(', ');
     staff.division_info = divisionInfo;
   }
 

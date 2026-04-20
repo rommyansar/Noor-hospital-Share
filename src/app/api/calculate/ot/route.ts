@@ -270,7 +270,7 @@ export async function POST(req: Request) {
             ? (staffCount > 0 ? Math.round((pool / staffCount) * 100) / 100 : 0)
             : pool;
 
-          if (share > 0) {
+          if (share >= 0) {
             addonResults.push({
               staff_id: staff.id,
               department_id: department_id,

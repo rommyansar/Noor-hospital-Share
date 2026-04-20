@@ -721,3 +721,149 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   const fileName = `${safeDeptName}_${MONTHS[data.month - 1]}_${data.year}_${type}_report.pdf`;
   doc.save(fileName);
 }
+
+// ── COMBINED PDF Export ─────────────────────────
+
+export function exportCombinedPDF(dataList: ReportExportData[]): void {
+  if (!dataList || dataList.length === 0) return;
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: [215, 356], // Indian Legal portrait
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let yPos = 15;
+
+  // ── Hospital Header (Only once at the start) ──
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NOOR HOSPITAL, QADIAN', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 8;
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  const firstData = dataList[0];
+  doc.text(`MONTHLY COMBINED SHARE DISTRIBUTION REPORT (${MONTHS[firstData.month - 1]} ${firstData.year})`, pageWidth / 2, yPos, { align: 'center' });
+  yPos += 8;
+
+  doc.setDrawColor(16, 185, 129);
+  doc.setLineWidth(0.6);
+  doc.line(12, yPos, pageWidth - 12, yPos);
+  yPos += 6;
+
+  for (let i = 0; i < dataList.length; i++) {
+    const data = dataList[i];
+
+    // Ensure we have enough space for the department header (at least 40mm)
+    if (yPos > pageHeight - 40) {
+      doc.addPage();
+      yPos = 15;
+    }
+
+    // ── Department, Period & Summary ──
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Department: ${data.department_name}`, 14, yPos);
+    yPos += 6;
+
+    if (data.report_heading) {
+      doc.setFontSize(12);
+      doc.text(data.report_heading, 14, yPos);
+      yPos += 6;
+    }
+
+    // Summary row
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    const totalDays = getDaysInMonth(data.year, data.month);
+    const summaryText = `Total Income: ${formatCurrency(data.total_income)}  |  Total Distributed: ${formatCurrency(data.total_distributed)}  |  Staff: ${data.staff.length}  |  Days in Month: ${totalDays}`;
+    doc.text(summaryText, 14, yPos);
+    yPos += 5;
+
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text('All calculations are based on approved hospital share policy. Amounts in Indian Rupees (Rs.).', 14, yPos);
+    doc.setTextColor(0, 0, 0);
+    yPos += 7;
+
+    // ── Table ──
+    const rows = buildNormalRows(data);
+    const headCols = ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'Breakdown', 'Share Amount (Rs.)'];
+    const bodyRows = rows.map(r => [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
+
+    const colStyles: Record<number, any> = {
+      0: { halign: 'center', cellWidth: 10 },
+      1: { halign: 'left', cellWidth: 40 },
+      2: { halign: 'right', cellWidth: 25 },
+      3: { halign: 'center', cellWidth: 15 },
+      4: { halign: 'left', cellWidth: 65 },
+      5: { halign: 'right', cellWidth: 25 },
+    };
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [headCols],
+      body: bodyRows,
+      theme: 'grid',
+      styles: { overflow: 'linebreak', textColor: [0, 0, 0] },
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, halign: 'center' },
+      bodyStyles: { fontSize: 10, cellPadding: 3, textColor: [0, 0, 0] },
+      columnStyles: colStyles,
+      alternateRowStyles: { fillColor: [245, 250, 248] },
+      margin: { left: 15, right: 15 },
+    });
+
+    yPos = (doc as any).lastAutoTable?.finalY + 15; // spacing between departments
+  }
+
+  // ── Signature Section ──
+  const finalY = yPos;
+  let sigY = finalY;
+
+  if (sigY + 35 > pageHeight) {
+    doc.addPage();
+    sigY = 25;
+  }
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
+
+  const margin = 14;
+  const sigSpacing = (pageWidth - margin * 2) / 4;
+  const lineLen = sigSpacing - 15;
+
+  const sigFields = ['Prepared By', 'Checked By', 'Approved By', 'Date'];
+  sigFields.forEach((label, i) => {
+    const x = margin + i * sigSpacing;
+    doc.setFontSize(8);
+    doc.text(`${label}:`, x, sigY);
+    doc.setDrawColor(100, 116, 139);
+    doc.setLineWidth(0.3);
+    doc.line(x, sigY + 6, x + lineLen, sigY + 6);
+  });
+
+  // Page numbers footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Noor Hospital, Qadian — Combined Report — ${MONTHS[firstData.month - 1]} ${firstData.year} — Page ${p} of ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 5,
+      { align: 'center' }
+    );
+  }
+
+  // Save
+  const fileName = `Combined_Report_${MONTHS[firstData.month - 1]}_${firstData.year}.pdf`;
+  doc.save(fileName);
+}
+

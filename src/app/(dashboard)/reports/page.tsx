@@ -5,7 +5,7 @@ import { FileBarChart, ChevronDown, ChevronUp, Download, FileSpreadsheet, FileTe
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
-import { exportExcel, exportPDF, type ReportExportData, type ReportType } from '@/lib/reportExport';
+import { exportExcel, exportPDF, exportCombinedPDF, type ReportExportData, type ReportType } from '@/lib/reportExport';
 
 interface StaffReport {
   staff_id: string;
@@ -58,6 +58,9 @@ export default function ReportsPage() {
   const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportAllLoading, setExportAllLoading] = useState(false);
+  const [selectedMultiDepts, setSelectedMultiDepts] = useState<Set<string>>(new Set());
+  const [recalculateBeforeExport, setRecalculateBeforeExport] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const fetchDepartments = async () => {
@@ -68,7 +71,13 @@ export default function ReportsPage() {
     if (active.length > 0 && !selectedDept) setSelectedDept(active[0].id);
   };
 
-  useEffect(() => { fetchDepartments(); }, []);
+  useEffect(() => { 
+    fetchDepartments(); 
+  }, []);
+
+  useEffect(() => {
+    setSelectedMultiDepts(new Set(departments.map(d => d.id)));
+  }, [departments]);
 
   const fetchReport = async () => {
     if (!selectedDept) return;
@@ -136,6 +145,81 @@ export default function ReportsPage() {
       console.error('Export error:', err);
     }
     setExportLoading(false);
+    setShowExportModal(false);
+  };
+
+  const handleExportAllPDF = async () => {
+    setExportAllLoading(true);
+    try {
+      const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+      
+      if (recalculateBeforeExport) {
+        addToast('info', 'Running calculations for selected departments...');
+        // Run sequentially to prevent overwhelming the server/DB
+        for (const deptId of selectedMultiDepts) {
+          const deptObj = departments.find(d => d.id === deptId);
+          if (!deptObj) continue;
+          
+          if (deptObj.calculation_method === 'ot') {
+            await fetch('/api/calculate/ot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ month: monthStr, department_id: deptId })
+            });
+          } else {
+            await fetch('/api/calculate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ month: monthStr, department_id: deptId })
+            });
+          }
+        }
+        // Force refresh the report screen if the currently viewed department was updated
+        if (selectedMultiDepts.has(selectedDept)) {
+          fetchReport();
+        }
+      }
+
+      const dataList: ReportExportData[] = [];
+      const cb = new Date().getTime();
+      
+      const fetchPromises = departments
+        .filter(dept => selectedMultiDepts.has(dept.id))
+        .map(async (dept) => {
+        const res = await fetch(`/api/reports?department_id=${dept.id}&year=${year}&month=${month}&_cb=${cb}`, {
+          cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data || !data.staff || data.staff.length === 0) return null;
+        
+        return {
+          department_name: dept.name,
+          year: data.year,
+          month: data.month,
+          total_income: data.total_income,
+          total_distributed: data.total_distributed,
+          staff: data.staff,
+          report_heading: data.report_heading || undefined,
+        } as ReportExportData;
+      });
+
+      const results = await Promise.all(fetchPromises);
+      for (const res of results) {
+        if (res) dataList.push(res);
+      }
+
+      if (dataList.length === 0) {
+        addToast('error', 'No data found across all departments for this month.');
+      } else {
+        exportCombinedPDF(dataList);
+        addToast('success', 'Combined report exported as PDF');
+      }
+    } catch (err) {
+      addToast('error', 'Failed to generate combined report');
+      console.error(err);
+    }
+    setExportAllLoading(false);
     setShowExportModal(false);
   };
 
@@ -606,6 +690,112 @@ export default function ReportsPage() {
                   }}
                 >
                   <FileSpreadsheet size={15} /> Excel
+                </button>
+              </div>
+            </div>
+
+            {/* Multiple Dept Report Section */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.08), rgba(234, 179, 8, 0.03))',
+              border: '1px solid rgba(234, 179, 8, 0.2)',
+              borderRadius: '14px',
+              padding: '20px',
+              marginTop: '14px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  background: 'rgba(234, 179, 8, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <FileBarChart size={20} color="#eab308" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Monthly Multiple Dept Report</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
+                    Combine all selected departments into one sequential PDF file without layout changes.
+                  </p>
+                </div>
+              </div>
+              
+              <div style={{ marginTop: '12px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Select Departments to Include
+                  </p>
+                  <button 
+                    onClick={() => {
+                      if (selectedMultiDepts.size === departments.length) {
+                        setSelectedMultiDepts(new Set());
+                      } else {
+                        setSelectedMultiDepts(new Set(departments.map(d => d.id)));
+                      }
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#eab308', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {selectedMultiDepts.size === departments.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+                <div style={{ maxHeight: '160px', overflowY: 'auto', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(234, 179, 8, 0.2)', borderRadius: '8px', padding: '10px' }}>
+                  {departments.map((d) => (
+                    <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedMultiDepts.has(d.id)}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedMultiDepts);
+                          if (e.target.checked) newSet.add(d.id);
+                          else newSet.delete(d.id);
+                          setSelectedMultiDepts(newSet);
+                        }}
+                        style={{ accentColor: '#eab308', width: '14px', height: '14px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '13px', color: '#e2e8f0' }}>{d.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', cursor: 'pointer', padding: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '8px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={recalculateBeforeExport}
+                    onChange={(e) => setRecalculateBeforeExport(e.target.checked)}
+                    style={{ accentColor: '#3b82f6', width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#60a5fa', display: 'block' }}>Recalculate latest data before exporting</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ensures all recent changes are reflected (may take a few seconds)</span>
+                  </div>
+                </label>
+
+                <button
+                  className="export-btn"
+                  disabled={exportAllLoading}
+                  onClick={handleExportAllPDF}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(234, 179, 8, 0.08))',
+                    border: '1px solid rgba(234, 179, 8, 0.3)',
+                    borderRadius: '10px',
+                    color: '#eab308',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <FileText size={15} /> {exportAllLoading ? 'Generating...' : 'Export Combined PDF'}
                 </button>
               </div>
             </div>

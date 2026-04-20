@@ -214,7 +214,7 @@ async function processAddons(
 
       const pctStrDisplay = addonPct.toString();
 
-      if (share > 0) {
+      if (share >= 0) {
         results.push({
           staff_id: staff.id,
           department_id: mainDeptId,

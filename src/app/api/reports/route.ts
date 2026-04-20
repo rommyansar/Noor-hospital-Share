@@ -381,8 +381,8 @@ export async function GET(req: Request) {
       allPcts.push(...uniqueAddons.map((ac: any) => `${parseFloat(String(ac.pct).replace('%', '')) || 0}%`));
     }
     
-    // Deduplicate array to show all distinct percentages applied to this staff
-    const uniqueDisplayPcts = [...new Set(allPcts)];
+    // Deduplicate array to show all distinct percentages applied to this staff and hide zeros (often fixed amounts)
+    const uniqueDisplayPcts = [...new Set(allPcts)].filter(p => !['0%', 'NaN%'].includes(p));
 
     // Compute division info
     let divisionInfo = 'Individual (no division)';

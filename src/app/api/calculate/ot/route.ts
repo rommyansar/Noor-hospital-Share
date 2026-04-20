@@ -152,17 +152,35 @@ export async function POST(req: Request) {
         }
       }
 
+      // ── Build per-staff conflict-day sets from OT cases ──
+      // A "conflict day" for a staff = a day where they worked in the main OT dept
+      const staffConflictDates: Record<string, Set<string>> = {};
+      for (const c of otCases) {
+        const caseDate = c.date;
+        if (!caseDate) continue;
+        const participantIds: string[] = [];
+        if (c.doctor_id) participantIds.push(c.doctor_id);
+        (c.assist_doctor_ids || []).forEach((id: string) => participantIds.push(id));
+        (c.assist_nurse_ids || []).forEach((id: string) => participantIds.push(id));
+        (c.paramedical_ids || []).forEach((id: string) => participantIds.push(id));
+        for (const id of participantIds) {
+          if (!staffConflictDates[id]) staffConflictDates[id] = new Set();
+          staffConflictDates[id].add(caseDate);
+        }
+      }
+
       for (const addon of otAddons) {
         const isManual = addon.amount_source === 'MANUAL';
         const rawManual = parseFloat(addon.manual_amount) || 0;
         const addonPct = parseFloat(addon.percentage) || 0;
+        const excludeMainDays = !!addon.exclude_main_dept_days;
 
         if (!addon.addon_department_id) continue;
         if (addonPct <= 0) continue; // Percentage is ALWAYS required
         if (isManual && rawManual <= 0) continue;
 
-        // Step 1: Base amount (Manual Amount or Total OT Income)
-        const baseAmount = isManual ? rawManual : totalOTIncome;
+        // Step 1: Global base amount (Manual Amount or Total OT Income)
+        const globalBase = isManual ? rawManual : totalOTIncome;
         const attRule = addon.attendance_rule || 'none';
 
         const [{ data: addonStaff }, { data: addonRules }, { data: addonDeptData }] = await Promise.all([
@@ -193,34 +211,6 @@ export async function POST(req: Request) {
           roleCounts[rk] = (roleCounts[rk] || 0) + 1;
         });
 
-        // Helper: count absent days from global staff_leaves
-        const getAbsentDays = (staffId: string): number => {
-          let absent = 0;
-          for (let d = 1; d <= daysInMonth; d++) {
-            const dateStr = `${month}-${String(d).padStart(2, '0')}`;
-            if (globalLeavesByDate[dateStr]?.has(staffId)) absent++;
-          }
-          return absent;
-        };
-
-        // Helper: for daily mode, sum only OT income from days staff was present
-        const getDailyPresentIncome = (staffId: string): { presentIncome: number; presentDays: number; absentDays: number } => {
-          let presentIncome = 0;
-          let presentDays = 0;
-          let absentDays = 0;
-          for (let d = 1; d <= daysInMonth; d++) {
-            const dateStr = `${month}-${String(d).padStart(2, '0')}`;
-            const dayIncome = otIncomeByDate[dateStr] || 0;
-            if (globalLeavesByDate[dateStr]?.has(staffId)) {
-              absentDays++;
-            } else {
-              presentDays++;
-              presentIncome += dayIncome;
-            }
-          }
-          return { presentIncome, presentDays, absentDays };
-        };
-
         // Include ALL active staff from the addon department
         const activeStaff = (addonStaff || []).filter((s: any) => s.is_active !== false);
         const staffCount = activeStaff.length;
@@ -229,40 +219,58 @@ export async function POST(req: Request) {
         let distType = addon.calculation_type || 'individual';
 
         for (const staff of activeStaff) {
-          // Step 2: Apply Attendance to base amount
-          let adjustedBase = baseAmount;
-          let presentDays = daysInMonth;
+          // ── PER-STAFF: Determine excluded dates (conflict + attendance) ──
+          const conflictDates = excludeMainDays
+            ? (staffConflictDates[staff.id] || new Set<string>())
+            : new Set<string>();
+
+          const excludedDates = new Set<string>();
           let absentDays = 0;
-          let noteExtra = '';
 
-          if (attRule === 'none') {
-            adjustedBase = baseAmount;
-            noteExtra = '(No attendance)';
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+            const isConflict = conflictDates.has(dateStr);
+            const isAbsent = globalLeavesByDate[dateStr]?.has(staff.id) || false;
 
-          } else if (attRule === 'monthly') {
-            absentDays = getAbsentDays(staff.id);
-            presentDays = daysInMonth - absentDays;
-            if (daysInMonth > 0) {
-              adjustedBase = Math.round(baseAmount * (presentDays / daysInMonth) * 100) / 100;
-            }
-            noteExtra = `(Monthly: ${presentDays}/${daysInMonth} days)`;
-
-          } else if (attRule === 'daily') {
-            const dailyData = getDailyPresentIncome(staff.id);
-            presentDays = dailyData.presentDays;
-            absentDays = dailyData.absentDays;
-            if (isManual) {
-              adjustedBase = daysInMonth > 0 ? Math.round(baseAmount * (presentDays / daysInMonth) * 100) / 100 : 0;
-              noteExtra = `(Daily Fixed: ${presentDays}/${daysInMonth} days)`;
-            } else {
-              adjustedBase = totalOTIncome > 0
-                ? Math.round(baseAmount * (dailyData.presentIncome / totalOTIncome) * 100) / 100
-                : 0;
-              noteExtra = `(Daily: ₹${Math.round(dailyData.presentIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')} present)`;
+            if (isConflict) excludedDates.add(dateStr);
+            if (isAbsent) {
+              absentDays++;
+              if (attRule !== 'none') excludedDates.add(dateStr);
             }
           }
 
-          // Step 3: Apply Percentage on adjusted base
+          const validDays = daysInMonth - excludedDates.size;
+          const conflictDayCount = conflictDates.size;
+          const presentDays = daysInMonth - absentDays;
+
+          // ── Step 2: Compute per-staff adjustedBase ──
+          let adjustedBase = globalBase;
+          let noteExtra = '';
+
+          if (excludeMainDays || attRule !== 'none') {
+            if (isManual) {
+              // Prorate manual amount by valid days for THIS staff
+              adjustedBase = daysInMonth > 0
+                ? Math.round(globalBase * (validDays / daysInMonth) * 100) / 100
+                : 0;
+              noteExtra = `(${validDays}/${daysInMonth} valid days${conflictDayCount > 0 ? `, ${conflictDayCount} conflict` : ''})`;
+            } else {
+              // TDA: sum OT income only for valid (non-excluded) days for THIS staff
+              let validIncome = 0;
+              for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${month}-${String(d).padStart(2, '0')}`;
+                if (!excludedDates.has(dateStr)) {
+                  validIncome += (otIncomeByDate[dateStr] || 0);
+                }
+              }
+              adjustedBase = validIncome;
+              noteExtra = `(₹${Math.round(validIncome).toLocaleString('en-IN')} of ₹${Math.round(totalOTIncome).toLocaleString('en-IN')}${conflictDayCount > 0 ? `, ${conflictDayCount} conflict days excluded` : ''})`;
+            }
+          } else {
+            noteExtra = '(No attendance)';
+          }
+
+          // Step 3: Apply Percentage on per-staff adjusted base
           const pool = Math.round(adjustedBase * (addonPct / 100) * 100) / 100;
 
           // Step 4: Group or Individual division
@@ -275,7 +283,7 @@ export async function POST(req: Request) {
               staff_id: staff.id,
               department_id: department_id,
               date: `${month}-01`,
-              income_amount: baseAmount,
+              income_amount: globalBase,
               calculation_type: 'rule',
               rule_percentage: String(addonPct),
               distribution_type: distType,
@@ -289,16 +297,19 @@ export async function POST(req: Request) {
                 note: `Add-on: ${addonDeptName} ${noteExtra}`,
                 addon_department: addonDeptName,
                 addon_pct: `${addonPct}%`,
-                base_amount: baseAmount,
+                base_amount: globalBase,
                 adjusted_base: adjustedBase,
                 pool_after_pct: pool,
                 distribution_type: distType,
                 attendance_rule: attRule,
                 amount_source: isManual ? 'MANUAL' : 'TDA',
                 manual_amount: isManual ? rawManual : null,
+                exclude_main_dept_days: excludeMainDays,
+                conflict_days_excluded: conflictDayCount,
                 total_days: daysInMonth,
                 present_days: presentDays,
                 absent_days: absentDays,
+                valid_days: validDays,
                 staff_count: staffCount,
               },
             });

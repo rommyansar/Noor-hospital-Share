@@ -68,7 +68,8 @@ export async function POST(request: Request) {
         attendance_rule: a.attendance_rule || 'none',
         applied_rules: a.applied_rules || [],
         amount_source: a.amount_source || 'TDA',
-        manual_amount: a.manual_amount || null
+        manual_amount: a.manual_amount || null,
+        exclude_main_dept_days: !!a.exclude_main_dept_days,
       }));
 
       const { error: insertError } = await supabase

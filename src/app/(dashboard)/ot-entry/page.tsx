@@ -397,7 +397,8 @@ export default function OTEntryPage() {
             attendance_rule: a.attendance_rule || 'none',
             applied_rules: a.applied_rules || [],
             amount_source: a.amount_source || 'TDA',
-            manual_amount: a.manual_amount || ''
+            manual_amount: a.manual_amount || '',
+            exclude_main_dept_days: !!a.exclude_main_dept_days
           }))
         })
       });
@@ -494,13 +495,33 @@ export default function OTEntryPage() {
 
     const totalDays = new Date(year, month, 0).getDate();
 
+    // Build per-staff conflict-day sets from OT cases (for preview)
+    const staffConflictDates: Record<string, Set<string>> = {};
+    cases.forEach(c => {
+      const caseDate = c.date ? displayToIso(c.date) : '';
+      if (!caseDate) return;
+      const allIds: string[] = [];
+      if (c.doctor_id) allIds.push(c.doctor_id);
+      (c.assist_doctor_ids || []).forEach(id => allIds.push(id));
+      (c.assist_nurse_ids || []).forEach(id => allIds.push(id));
+      (c.paramedical_ids || []).forEach(id => allIds.push(id));
+      allIds.forEach(id => {
+        if (!staffConflictDates[id]) staffConflictDates[id] = new Set();
+        staffConflictDates[id].add(caseDate);
+      });
+    });
+
     const addonOut: any[] = [];
     addons.filter(a => a.addon_department_id && a.percentage > 0).forEach(addon => {
       const aDept = allDepartments.find(d => d.id === addon.addon_department_id);
-      const pool = Math.round(totalOtSum * (addon.percentage / 100) * 100) / 100;
+      const addonPct = addon.percentage;
+      const isManual = addon.amount_source === 'MANUAL';
+      const rawManual = parseFloat(String(addon.manual_amount)) || 0;
+      const globalBase = isManual ? rawManual : totalOtSum;
       const activeRules = addon.applied_rules && addon.applied_rules.length > 0 ? addon.applied_rules : (addonRulesMap[addon.addon_department_id] || []).map(r => r.id);
       const aStaff = addonStaffMap[addon.addon_department_id] || [];
       const attRule = addon.attendance_rule || 'none';
+      const excludeMainDays = !!addon.exclude_main_dept_days;
 
       // Count staff per role for group distribution
       const roleCounts: Record<string, number> = {};
@@ -516,33 +537,44 @@ export default function OTEntryPage() {
         const distType = rule.distribution_type || 'individual';
         const presentCount = distType === 'group' ? (roleCounts[s.role.toUpperCase().trim()] || 1) : 1;
 
-        let adjustedPool = pool;
+        // ── PER-STAFF adjusted base ──
+        const conflictDates = excludeMainDays ? (staffConflictDates[s.id] || new Set<string>()) : new Set<string>();
+        const absentDateSet = new Set(leavesList.filter(l => l.staff_id === s.id).map(l => l.date));
+        const mStr = `${year}-${String(month).padStart(2, '0')}`;
 
-        if (attRule === 'none') {
-          // No attendance impact
-          adjustedPool = pool;
-        } else if (attRule === 'monthly') {
-          // Monthly: ratio-based — count all leave days (OFF + CL)
-          const absentDays = leavesList.filter(l => l.staff_id === s.id).length;
-          const presentDays = Math.max(0, totalDays - absentDays);
-          adjustedPool = totalDays > 0 ? Math.round(pool * (presentDays / totalDays) * 100) / 100 : 0;
-        } else if (attRule === 'daily') {
-          // Daily: day-wise — sum only OT income from days staff was present
-          const absentDateSet = new Set(leavesList.filter(l => l.staff_id === s.id).map(l => l.date));
-          let presentIncome = 0;
-          const mStr = `${year}-${String(month).padStart(2, '0')}`;
-          for (let d = 1; d <= totalDays; d++) {
-            const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
-            if (!absentDateSet.has(dateStr)) {
-              presentIncome += (otIncomeByDate[dateStr] || 0);
+        // Build excluded dates = conflict + absent
+        const excludedDates = new Set<string>();
+        for (let d = 1; d <= totalDays; d++) {
+          const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
+          if (conflictDates.has(dateStr)) excludedDates.add(dateStr);
+          if (attRule !== 'none' && absentDateSet.has(dateStr)) excludedDates.add(dateStr);
+        }
+        const validDays = totalDays - excludedDates.size;
+
+        let adjustedBase = globalBase;
+
+        if (excludeMainDays || attRule !== 'none') {
+          if (isManual) {
+            // Prorate manual amount by valid days
+            adjustedBase = totalDays > 0 ? Math.round(globalBase * (validDays / totalDays) * 100) / 100 : 0;
+          } else {
+            // TDA: sum OT income only for valid (non-excluded) days
+            let validIncome = 0;
+            for (let d = 1; d <= totalDays; d++) {
+              const dateStr = `${mStr}-${String(d).padStart(2, '0')}`;
+              if (!excludedDates.has(dateStr)) {
+                validIncome += (otIncomeByDate[dateStr] || 0);
+              }
             }
+            adjustedBase = validIncome;
           }
-          adjustedPool = totalOtSum > 0 ? Math.round(pool * (presentIncome / totalOtSum) * 100) / 100 : 0;
         }
 
+        const staffPool = Math.round(adjustedBase * (addonPct / 100) * 100) / 100;
+
         const finalShare = distType === 'group'
-          ? Math.round((adjustedPool / presentCount) * 100) / 100
-          : adjustedPool;
+          ? Math.round((staffPool / presentCount) * 100) / 100
+          : staffPool;
 
         if (finalShare > 0) {
           addonOut.push({ deptName: aDept?.name, staffName: s.name, role: s.role, amount: finalShare });
@@ -830,7 +862,7 @@ export default function OTEntryPage() {
           <div className="mb-10">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2"><Settings className="text-indigo-400" /> Add-On Departments</h2>
-              <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [], amount_source: 'TDA', manual_amount: '' } as any])} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-2">
+              <button onClick={() => setAddons([...addons, { id: `new_${Date.now()}`, month: monthStr, addon_department_id: '', percentage: 0, calculation_type: 'individual', attendance_rule: 'none', applied_rules: [], amount_source: 'TDA', manual_amount: '', exclude_main_dept_days: false } as any])} className="btn text-sm px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-2">
                 <Plus size={14} /> Add Dept Add-On
               </button>
             </div>
@@ -948,6 +980,45 @@ export default function OTEntryPage() {
                             </div>
                           </div>
                         )}
+                      </div>
+
+                      {/* Exclude Main Dept Working Days Toggle */}
+                      <div className="col-span-full mt-3 p-3 rounded-lg border" style={{
+                        background: addon.exclude_main_dept_days ? 'rgba(245, 158, 11, 0.08)' : 'rgba(15, 23, 42, 0.3)',
+                        borderColor: addon.exclude_main_dept_days ? 'rgba(245, 158, 11, 0.3)' : 'rgba(71, 85, 105, 0.3)',
+                        transition: 'all 0.2s ease'
+                      }}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p style={{ fontSize: '12px', fontWeight: 700, color: addon.exclude_main_dept_days ? '#fbbf24' : '#94a3b8' }}>
+                              🚫 Exclude Main Dept Working Days
+                            </p>
+                            <p style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                              If ON → Exclude income on days where this staff also worked in {selectedDeptName || 'main dept'}. Per-staff basis.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const next = [...addons];
+                              next[aIdx] = { ...next[aIdx], exclude_main_dept_days: !next[aIdx].exclude_main_dept_days };
+                              setAddons(next);
+                            }}
+                            style={{
+                              width: '48px', height: '26px', borderRadius: '13px',
+                              background: addon.exclude_main_dept_days ? '#f59e0b' : 'rgba(71, 85, 105, 0.5)',
+                              border: 'none', cursor: 'pointer', position: 'relative',
+                              transition: 'background 0.2s ease'
+                            }}
+                          >
+                            <span style={{
+                              position: 'absolute', top: '3px',
+                              left: addon.exclude_main_dept_days ? '25px' : '3px',
+                              width: '20px', height: '20px', borderRadius: '50%',
+                              background: '#fff', transition: 'left 0.2s ease',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                            }} />
+                          </button>
+                        </div>
                       </div>
                       {addon.addon_department_id && (
                         <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">

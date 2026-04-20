@@ -115,6 +115,7 @@ export interface OTMonthlyAddon {
   applied_rules?: string[];
   amount_source?: 'TDA' | 'MANUAL';
   manual_amount?: number | string;
+  exclude_main_dept_days?: boolean;
   created_at: string;
 }
 

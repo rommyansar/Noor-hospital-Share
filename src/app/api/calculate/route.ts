@@ -419,14 +419,16 @@ export async function POST(req: Request) {
     const appliedMainRules: string[] = Array.isArray(totalAmountRow?.applied_rules) ? totalAmountRow.applied_rules : [];
 
     // Fetch required data in parallel (was sequential — 4 round-trips → 1)
-    const [{ data: incomesData }, { data: workData }, { data: rulesData }, { data: primaryStaffData }, { data: deptData }] = await Promise.all([
+    const [{ data: incomesData }, { data: workData }, { data: rulesData }, { data: primaryStaffData }, { data: deptData }, { data: addonsData }] = await Promise.all([
       supabase.from('daily_income').select('*').eq('department_id', dept.id).gte('date', startDate).lt('date', endDate),
       supabase.from('staff_work_entries').select('*').eq('department_id', dept.id).gte('date', startDate).lt('date', endDate),
       supabase.from('department_rules').select('*').eq('department_id', dept.id).eq('is_active', true),
       supabase.from('staff').select('*').contains('department_ids', [dept.id]).eq('is_active', true),
       supabase.from('departments').select('id, name'),
+      supabase.from('monthly_department_addons').select('*').eq('department_id', dept.id).eq('month', month)
     ]);
 
+    const addons = (addonsData || []) as any[];
     const ruleMap: Record<string, any> = {};
     if (rulesData) {
       rulesData.forEach((r: any) => {
@@ -613,7 +615,7 @@ export async function POST(req: Request) {
           const staffObj = staffData.find((s: any) => s.id === raw);
           if (!staffObj) return null;
           
-          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staffObj, dept.id, '0', deptRules, addons || []);
+          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staffObj, dept.id, '0', rulesData || [], addons || []);
           const userRole = configuredRole.toUpperCase().trim();
           const rule = ruleMap[userRole];
           

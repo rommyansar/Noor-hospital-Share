@@ -194,12 +194,24 @@ export default function MonthlyEntryPage() {
           // Old format — migrate from staff_id string
           const staffObj = allActiveStaff.find(s => s.id === raw);
           if (!staffObj) return null;
-          const matchedRule = loadedActiveRules.find((r: DepartmentRule) => r.role.toUpperCase().trim() === staffObj.role.toUpperCase().trim());
+          
+          const deptPctObj = staffObj.department_percentages?.[selectedDept];
+          const effRole = (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.role) ? deptPctObj.role : staffObj.role;
+
+          const matchedRule = loadedActiveRules.find((r: DepartmentRule) => r.role.toUpperCase().trim() === effRole.toUpperCase().trim());
+          
+          let effPct = matchedRule ? Number(matchedRule.percentage) : 0;
+          if (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.percentage && String(deptPctObj.percentage).trim() !== '') {
+            effPct = Number(deptPctObj.percentage);
+          } else if (deptPctObj && typeof deptPctObj !== 'object' && String(deptPctObj).trim() !== '') {
+            effPct = Number(deptPctObj);
+          }
+
           const entry: StaffEntry = {
             entry_id: crypto.randomUUID(),
             staff_id: raw,
-            role: staffObj.role,
-            percentage: matchedRule ? Number(matchedRule.percentage) : 0,
+            role: effRole,
+            percentage: effPct,
             dist_type: (matchedRule?.distribution_type as 'individual' | 'group') || 'individual',
           };
           if (isManual) {
@@ -261,6 +273,80 @@ export default function MonthlyEntryPage() {
         present_staff_ids: prev[dateStr]?.present_staff_ids || null
       }
     }));
+  };
+
+  const resolveEffRoleAndPct = (staffObj: Staff, targetDeptId: string, rules: any[], isAddon: boolean = false) => {
+    let effRole = staffObj.role;
+    let effPctObj: any = null;
+
+    if (staffObj.department_percentages) {
+      // 1. Exact direct match
+      const config = staffObj.department_percentages[targetDeptId];
+      if (config) {
+        effPctObj = config;
+        if (typeof config === 'object' && config.role) {
+          effRole = config.role;
+        } else if (isAddon && departments) {
+          // Explicit requirement: Auto-infer role from department name ONLY for Add-On departments
+          const deptObj = departments.find((d: any) => d.id === targetDeptId);
+          if (deptObj) {
+            const dName = deptObj.name.toUpperCase().trim();
+            const validRuleNames = rules ? rules.map((r: any) => String(r.role).toUpperCase().trim()) : [];
+            if (validRuleNames.includes(dName)) {
+              effRole = dName;
+            }
+          }
+        }
+        return { effRole, effPctObj };
+      }
+
+      // 2. Add-On Priority Match (if calculating a primary department with addons)
+      if (!isAddon) {
+        let foundAddonMatch = false;
+        if (addons && addons.length > 0) {
+          for (const addon of addons) {
+            const addonConfig = staffObj.department_percentages[addon.addon_department_id];
+            if (addonConfig) {
+              effPctObj = addonConfig;
+              if (typeof addonConfig === 'object' && addonConfig.role) {
+                effRole = addonConfig.role;
+              }
+              foundAddonMatch = true;
+              break;
+            }
+          }
+        }
+        if (foundAddonMatch) return { effRole, effPctObj };
+
+        // 3. Smart Global Fallback
+        // Resolves cases where staff didn't check the Main Dept box, but mapped their role in a standalone pseudo-dept (e.g. "OPD NURSE").
+        // To resolve conflicts (e.g., "NURSE" vs "OPD NURSE"), prioritize the most specific (longest) matching explicitly mapped role!
+        if (rules && rules.length > 0) {
+          const validRuleNames = rules.map(r => String(r.role).toUpperCase().trim());
+          let bestFallbackRole = '';
+          let bestFallbackPctObj: any = null;
+
+          for (const key of Object.keys(staffObj.department_percentages)) {
+            const fallbackConfig = staffObj.department_percentages[key];
+            if (typeof fallbackConfig === 'object' && fallbackConfig !== null && fallbackConfig.role) {
+              const fallbackRole = String(fallbackConfig.role).toUpperCase().trim();
+              if (validRuleNames.includes(fallbackRole)) {
+                 if (!bestFallbackRole || fallbackRole.length > bestFallbackRole.length) {
+                    bestFallbackRole = String(fallbackConfig.role).trim();
+                    bestFallbackPctObj = fallbackConfig;
+                 }
+              }
+            }
+          }
+
+          if (bestFallbackRole) {
+             effRole = bestFallbackRole;
+             effPctObj = bestFallbackPctObj;
+          }
+        }
+      }
+    }
+    return { effRole, effPctObj };
   };
 
   const handleSaveAll = async () => {
@@ -696,7 +782,10 @@ export default function MonthlyEntryPage() {
           <p className="text-xs text-slate-400 mb-4">Select which rules you want to actively apply to the main department calculation for this month.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
             {deptRules.map(rule => {
-              const matchingStaff = staffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim());
+              const matchingStaff = staffList.filter(s => {
+                const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                return effRole.toUpperCase().trim() === rule.role.toUpperCase().trim();
+              });
               const isApplied = appliedMainRules.includes(rule.id);
               return (
                 <div
@@ -738,9 +827,15 @@ export default function MonthlyEntryPage() {
                   <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                     {matchingStaff.length > 0 ? (
                       <span>{matchingStaff.length} local staff: {matchingStaff.map(s => s.name).join(', ')}</span>
-                    ) : globalStaffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id))).length > 0 ? (
+                    ) : globalStaffList.filter(s => {
+                      const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                      return effRole.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id));
+                    }).length > 0 ? (
                       <span style={{ color: '#60a5fa' }} title="These staff members receive their share automatically via the External Add-On system.">
-                        {globalStaffList.filter(s => s.role.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id))).length} staff handled via Add-On System
+                        {globalStaffList.filter(s => {
+                          const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                          return effRole.toUpperCase().trim() === rule.role.toUpperCase().trim() && s.department_ids?.some(id => addons.map(a => a.addon_department_id).includes(id));
+                        }).length} staff handled via Add-On System
                       </span>
                     ) : (
                       <span style={{ color: '#ef4444' }}>⚠ No staff assigned globally</span>
@@ -750,13 +845,22 @@ export default function MonthlyEntryPage() {
               );
             })}
           </div>
-          {staffList.filter(s => !deptRules.find(r => r.role.toUpperCase().trim() === s.role.toUpperCase().trim())).length > 0 && (
+          {staffList.filter(s => {
+            const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+            return !deptRules.find(r => r.role.toUpperCase().trim() === effRole.toUpperCase().trim());
+          }).length > 0 && (
             <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
               <p style={{ fontSize: '12px', color: '#f87171', fontWeight: 600, margin: 0 }}>
                 ⚠ Unmatched Staff (no rule for their role):
               </p>
               <p style={{ fontSize: '12px', color: '#fca5a5', margin: '4px 0 0' }}>
-                {staffList.filter(s => !deptRules.find(r => r.role.toUpperCase().trim() === s.role.toUpperCase().trim())).map(s => `${s.name} (${s.role})`).join(', ')}
+                {staffList.filter(s => {
+                  const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                  return !deptRules.find(r => r.role.toUpperCase().trim() === effRole.toUpperCase().trim());
+                }).map(s => {
+                  const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                  return `${s.name} (${effRole})`;
+                }).join(', ')}
               </p>
             </div>
           )}
@@ -784,7 +888,8 @@ export default function MonthlyEntryPage() {
         // Build role counts for group distribution (only from selected/effective staff)
         const roleCounts: Record<string, number> = {};
         effectiveStaffList.forEach(s => {
-          const rKey = s.role.toUpperCase().trim();
+          const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+          const rKey = effRole.toUpperCase().trim();
           roleCounts[rKey] = (roleCounts[rKey] || 0) + 1;
         });
 
@@ -808,6 +913,7 @@ export default function MonthlyEntryPage() {
 
         type RowData = {
           staff: Staff;
+          effRole: string;
           rule: DepartmentRule | null;
           pct: number;
           distType: string;
@@ -822,16 +928,21 @@ export default function MonthlyEntryPage() {
 
         // === Primary Department Staff ===
         const primaryRows: RowData[] = effectiveStaffList.map(s => {
-          const rKey = s.role.toUpperCase().trim();
+          const { effRole, effPctObj: deptPctObj } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+          const rKey = effRole.toUpperCase().trim();
           const rule = deptRules.find(r => r.role.toUpperCase().trim() === rKey);
           const absentDays = getAbsentDays(s.id);
           const workingDays = totalDays - absentDays;
 
-          if (!rule) return { staff: s, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'primary', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
+          if (!rule) return { staff: s, effRole, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'primary', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
 
           const pct = parseFloat(rule.percentage) || 0;
-          const overridePct = s.department_percentages?.[selectedDept];
-          const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : pct;
+          let effectivePct = pct;
+          if (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.percentage && String(deptPctObj.percentage).trim() !== '') {
+            effectivePct = parseFloat(String(deptPctObj.percentage));
+          } else if (deptPctObj && typeof deptPctObj !== 'object' && String(deptPctObj).trim() !== '') {
+            effectivePct = parseFloat(String(deptPctObj));
+          }
 
           let amount = 0;
           let poolTotal = 0;
@@ -889,7 +1000,7 @@ export default function MonthlyEntryPage() {
           adjustedBase = Math.round(adjustedBase * 100) / 100;
 
           const workAmount = parseFloat(staffAmounts[s.id]) || 0;
-          return { staff: s, rule, pct: effectivePct, distType: rule.distribution_type, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'primary', adjustedBase, workAmount };
+          return { staff: s, effRole, rule, pct: effectivePct, distType: rule.distribution_type, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'primary', adjustedBase, workAmount };
         });
 
         // === Add-On Department Staff ===
@@ -909,7 +1020,8 @@ export default function MonthlyEntryPage() {
 
           const aRoleCounts: Record<string, number> = {};
           aStaff.forEach(s => {
-            const rk = s.role.toUpperCase().trim();
+            const { effRole } = resolveEffRoleAndPct(s, addon.addon_department_id, aRules, true);
+            const rk = effRole.toUpperCase().trim();
             aRoleCounts[rk] = (aRoleCounts[rk] || 0) + 1;
           });
 
@@ -919,17 +1031,22 @@ export default function MonthlyEntryPage() {
           const overallCalcType = hasGroup && hasIndividual ? 'mixed' : hasGroup ? 'group' : 'individual';
 
           const aRows: RowData[] = aStaff.map(s => {
-            const rKey = s.role.toUpperCase().trim();
+            const { effRole, effPctObj: deptPctObj } = resolveEffRoleAndPct(s, addon.addon_department_id, aRules, true);
+            const rKey = effRole.toUpperCase().trim();
             // Use addon department's own rules
             const rule = aRules.find(r => r.role.toUpperCase().trim() === rKey && activeRuleIds.includes(r.id));
             const absentDays = getAbsentDays(s.id);
             const workingDays = totalDays - absentDays;
 
-            if (!rule) return { staff: s, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'addon', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
+            if (!rule) return { staff: s, effRole, rule: null, pct: 0, distType: '-', estimatedAmount: 0, poolTotal: 0, absentDays, workingDays, section: 'addon', adjustedBase: 0, workAmount: parseFloat(staffAmounts[s.id]) || 0 };
 
             const pct = parseFloat(rule.percentage) || 0;
-            const overridePct = s.department_percentages?.[addon.addon_department_id];
-            const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : pct;
+            let effectivePct = pct;
+            if (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.percentage && String(deptPctObj.percentage).trim() !== '') {
+              effectivePct = parseFloat(String(deptPctObj.percentage));
+            } else if (deptPctObj && typeof deptPctObj !== 'object' && String(deptPctObj).trim() !== '') {
+              effectivePct = parseFloat(String(deptPctObj));
+            }
 
             let amount = 0;
             let poolTotal = 0;
@@ -953,7 +1070,7 @@ export default function MonthlyEntryPage() {
               }
             }
             const workAmount = parseFloat(staffAmounts[s.id]) || 0;
-            return { staff: s, rule, pct: effectivePct, distType, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'addon', adjustedBase, workAmount };
+            return { staff: s, effRole, rule, pct: effectivePct, distType, estimatedAmount: amount, poolTotal, absentDays, workingDays, section: 'addon', adjustedBase, workAmount };
           });
 
           addonSections.push({
@@ -983,12 +1100,12 @@ export default function MonthlyEntryPage() {
                 <span style={{
                   fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
                   background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', textTransform: 'uppercase'
-                }}>{row.staff.role}</span>
+                }}>{row.effRole}</span>
               ) : (
                 <span style={{
                   fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
                   background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', textTransform: 'uppercase'
-                }}>{row.staff.role} ⚠</span>
+                }}>{row.effRole || row.staff.role} ⚠</span>
               )}
             </td>
             <td style={{ padding: '10px 16px', fontSize: '14px', fontWeight: 700, color: row.rule ? '#10b981' : '#ef4444' }}>
@@ -1621,12 +1738,21 @@ export default function MonthlyEntryPage() {
                                 if (!e.target.value) return;
                                 const staffObj = globalStaffList.find(s => s.id === e.target.value);
                                 if (!staffObj) return;
-                                const matchedRule = deptRules.find(r => r.role.toUpperCase().trim() === staffObj.role.toUpperCase().trim());
+                                const { effRole, effPctObj: deptPctObj } = resolveEffRoleAndPct(staffObj, selectedDept, deptRules);
+                                const matchedRule = deptRules.find(r => r.role.toUpperCase().trim() === effRole.toUpperCase().trim());
+                                
+                                let effPct = matchedRule ? Number(matchedRule.percentage) : 0;
+                                if (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.percentage && String(deptPctObj.percentage).trim() !== '') {
+                                  effPct = Number(deptPctObj.percentage);
+                                } else if (deptPctObj && typeof deptPctObj !== 'object' && String(deptPctObj).trim() !== '') {
+                                  effPct = Number(deptPctObj);
+                                }
+                                
                                 setManualEntries(prev => [...prev, {
                                   entry_id: crypto.randomUUID(),
                                   staff_id: staffObj.id,
-                                  role: staffObj.role,
-                                  percentage: matchedRule ? Number(matchedRule.percentage) : 0,
+                                  role: effRole,
+                                  percentage: effPct,
                                   dist_type: (matchedRule?.distribution_type as 'individual' | 'group') || 'individual',
                                   amount: 0,
                                 }]);
@@ -1664,20 +1790,28 @@ export default function MonthlyEntryPage() {
                       <td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No staff found for this department.</td>
                     </tr>
                   ) : staffList.map((staff) => {
-                    const rule = deptRules.find(r => r.role.toUpperCase().trim() === staff.role.toUpperCase().trim());
+                    const { effRole, effPctObj: deptPctObj } = resolveEffRoleAndPct(staff, selectedDept, deptRules);
+                    const rule = deptRules.find(r => r.role.toUpperCase().trim() === effRole.toUpperCase().trim());
+                    
+                    let effPctStr = rule ? rule.percentage : '0';
+                    if (deptPctObj && typeof deptPctObj === 'object' && deptPctObj.percentage && String(deptPctObj.percentage).trim() !== '') {
+                      effPctStr = String(deptPctObj.percentage);
+                    } else if (deptPctObj && typeof deptPctObj !== 'object' && String(deptPctObj).trim() !== '') {
+                      effPctStr = String(deptPctObj);
+                    }
 
                     return (
                       <tr key={staff.id} style={{ borderBottom: '1px solid rgba(71, 85, 105, 0.1)' }}>
                         <td style={{ padding: '10px 20px', fontWeight: 500, color: '#f8fafc', fontSize: '14px' }}>
                           <div style={{ fontWeight: 600 }}>{staff.name}</div>
-                          <div style={{ color: '#64748b', fontSize: '11px' }}>{staff.staff_code || 'No Code'} • {staff.role}</div>
+                          <div style={{ color: '#64748b', fontSize: '11px' }}>{staff.staff_code || 'No Code'} • {effRole}</div>
                         </td>
                         <td style={{ padding: '10px 20px' }}>
                           {rule ? (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <span style={{ fontSize: '12px', fontWeight: 700, color: '#10b981' }}>{rule.role}</span>
                               <span style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                                {rule.percentage}% • {rule.distribution_type === 'group' ? 'Group' : 'Individual'}
+                                {effPctStr}% • {rule.distribution_type === 'group' ? 'Group' : 'Individual'}
                               </span>
                             </div>
                           ) : (
@@ -1751,9 +1885,12 @@ export default function MonthlyEntryPage() {
                           <option value="">-- Select Staff to Add --</option>
                           {globalStaffList
                             .filter(s => !staffList.find(x => x.id === s.id))
-                            .map(s => (
-                              <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-                            ))
+                            .map(s => {
+                              const { effRole } = resolveEffRoleAndPct(s, selectedDept, deptRules);
+                              return (
+                                <option key={s.id} value={s.id}>{s.name} ({effRole})</option>
+                              );
+                            })
                           }
                         </select>
                       </div>

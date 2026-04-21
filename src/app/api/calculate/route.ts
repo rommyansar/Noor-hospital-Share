@@ -13,11 +13,20 @@ function getDaysInMonth(yearStr: string, monthStr: string) {
   return new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate();
 }
 
-function getStaffConfig(staff: any, deptId: string, fallbackRulePercentage: string): { role: string, percentage: string } {
+function getStaffConfig(
+  staff: any, 
+  deptId: string, 
+  fallbackRulePercentage: string, 
+  deptRules?: any[], 
+  addons?: any[], 
+  departments?: any[], 
+  isAddon: boolean = false
+): { role: string, percentage: string } {
   let role = staff.role;
   let percentage = fallbackRulePercentage;
 
   if (staff.department_percentages && typeof staff.department_percentages === 'object') {
+    // 1. Exact direct match
     const config = staff.department_percentages[deptId];
     if (config) {
       if (typeof config === 'object' && config !== null) {
@@ -25,6 +34,72 @@ function getStaffConfig(staff: any, deptId: string, fallbackRulePercentage: stri
         if (config.percentage) percentage = String(config.percentage).trim();
       } else if (String(config).trim() !== '') {
         percentage = String(config).trim();
+      }
+
+      // Extensively Requested: Auto-Infer role from department name *only* for Add-On departments!
+      if (isAddon && !config.role && departments && deptRules) {
+        const deptObj = departments.find((d: any) => d.id === deptId);
+        if (deptObj) {
+          const dName = deptObj.name.toUpperCase().trim();
+          if (deptRules.map((r: any) => String(r.role).toUpperCase().trim()).includes(dName)) {
+            role = dName;
+          }
+        }
+      }
+
+      return { role, percentage };
+    }
+
+    // 2. Add-On Department Priority Match
+    let foundAddonMatch = false;
+    if (!isAddon && addons && Array.isArray(addons)) {
+      for (const addon of addons) {
+        const addonConfig = staff.department_percentages[addon.addon_department_id];
+        if (addonConfig) {
+          if (typeof addonConfig === 'object' && addonConfig !== null) {
+             if (addonConfig.role) {
+                role = String(addonConfig.role).trim();
+             }
+             if (addonConfig.percentage) percentage = String(addonConfig.percentage).trim();
+          } else if (String(addonConfig).trim() !== '') {
+             percentage = String(addonConfig).trim();
+          }
+          foundAddonMatch = true;
+          break;
+        }
+      }
+    }
+
+    if (foundAddonMatch) return { role, percentage };
+
+    // 3. Smart Global Fallback 
+    // Resolves cases where staff didn't check the Main Dept box, but mapped their role in a standalone pseudo-dept (e.g. "OPD NURSE").
+    // To resolve conflicts (e.g., "NURSE" vs "OPD NURSE"), prioritize the most specific (longest) matching role!
+    if (deptRules && Array.isArray(deptRules)) {
+      const validRuleNames = deptRules.map((r: any) => String(r.role).toUpperCase().trim());
+      let bestFallbackRole = '';
+      let bestFallbackPctObj: any = null;
+
+      for (const key of Object.keys(staff.department_percentages)) {
+        const fallbackConfig = staff.department_percentages[key];
+        if (typeof fallbackConfig === 'object' && fallbackConfig !== null && fallbackConfig.role) {
+          const fallbackRole = String(fallbackConfig.role).toUpperCase().trim();
+          if (validRuleNames.includes(fallbackRole)) {
+             // We found a matching explicitly-set rule! 
+             // Pick it if it's the first match, or if it's more specific (longer) than the previous match
+             if (!bestFallbackRole || fallbackRole.length > bestFallbackRole.length) {
+                bestFallbackRole = String(fallbackConfig.role).trim();
+                bestFallbackPctObj = fallbackConfig;
+             }
+          }
+        }
+      }
+
+      if (bestFallbackRole) {
+         role = bestFallbackRole;
+         if (bestFallbackPctObj && bestFallbackPctObj.percentage && String(bestFallbackPctObj.percentage).trim() !== '') {
+            percentage = String(bestFallbackPctObj.percentage).trim();
+         }
       }
     }
   }
@@ -54,6 +129,7 @@ async function processAddons(
   globalLeavesByDate: Record<string, Set<string>>,
   incomesData: any[],
   deptTotalAmount: number,
+  deptData?: any[],
 ): Promise<{ results: any[]; totalAddonDeduction: number }> {
   const results: any[] = [];
   let totalAddonDeduction = 0;
@@ -134,7 +210,8 @@ async function processAddons(
     // Count staff per role (for group distribution)
     const roleCounts: Record<string, number> = {};
     for (const s of staffList) {
-      const rk = s.role.toUpperCase().trim();
+      const { role: configuredRole } = getStaffConfig(s, addonDeptId, '0', addonRules, [], deptData || [], true);
+      const rk = configuredRole.toUpperCase().trim();
       roleCounts[rk] = (roleCounts[rk] || 0) + 1;
     }
 
@@ -149,12 +226,14 @@ async function processAddons(
     };
 
     for (const staff of staffList) {
-      const userRole = staff.role.toUpperCase().trim();
+      const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staff, addonDeptId, '0', addonRules, [], deptData || [], true);
+      const userRole = configuredRole.toUpperCase().trim();
       const rule = ruleMap[userRole];
       if (!rule) continue;
 
-      const overridePct = staff.department_percentages?.[addonDeptId];
-      const effectivePct = (overridePct && String(overridePct).trim() !== '') ? parseFloat(String(overridePct)) : (parseFloat(rule.percentage) || 0);
+      // Extract effective percentage from config
+      let effectivePct = parseFloat(configuredPct);
+      if (isNaN(effectivePct)) effectivePct = parseFloat(rule.percentage) || 0;
 
       // Always use rule's distribution_type — not addon config
       const distType = rule.distribution_type || 'individual';
@@ -227,8 +306,8 @@ async function processAddons(
           present_count: presentCount,
           final_share: share,
           breakdown: {
-            role: staff.role,
-            percentage: `${addonPct}%`,
+            role: configuredRole,
+            percentage: `${effectivePct}%`,
             type: 'addon_share',
             note: `Add-on: ${addonDeptName} from ${mainDeptName}${noteExtra}`,
             addon_department: addonDeptName,
@@ -340,11 +419,12 @@ export async function POST(req: Request) {
     const appliedMainRules: string[] = Array.isArray(totalAmountRow?.applied_rules) ? totalAmountRow.applied_rules : [];
 
     // Fetch required data in parallel (was sequential — 4 round-trips → 1)
-    const [{ data: incomesData }, { data: workData }, { data: rulesData }, { data: primaryStaffData }] = await Promise.all([
+    const [{ data: incomesData }, { data: workData }, { data: rulesData }, { data: primaryStaffData }, { data: deptData }] = await Promise.all([
       supabase.from('daily_income').select('*').eq('department_id', dept.id).gte('date', startDate).lt('date', endDate),
       supabase.from('staff_work_entries').select('*').eq('department_id', dept.id).gte('date', startDate).lt('date', endDate),
       supabase.from('department_rules').select('*').eq('department_id', dept.id).eq('is_active', true),
       supabase.from('staff').select('*').contains('department_ids', [dept.id]).eq('is_active', true),
+      supabase.from('departments').select('id, name'),
     ]);
 
     const ruleMap: Record<string, any> = {};
@@ -413,6 +493,7 @@ export async function POST(req: Request) {
       globalLeavesByDate,
       incomesData || [],
       deptTotalAmount,
+      deptData || [],
     );
     newResults.push(...addonResults);
     totalDistributed += addonResults.reduce((s: number, r: any) => s + r.final_share, 0);
@@ -433,7 +514,7 @@ export async function POST(req: Request) {
         // Count staff per role for group distribution
         const staffCountByRole: Record<string, number> = {};
         for (const s of staffData) {
-          const { role: configuredRole } = getStaffConfig(s, dept.id, '0');
+          const { role: configuredRole } = getStaffConfig(s, dept.id, '0', rulesData || [], [], deptData || []);
           const rk = configuredRole.toUpperCase().trim();
           staffCountByRole[rk] = (staffCountByRole[rk] || 0) + 1;
         }
@@ -444,7 +525,7 @@ export async function POST(req: Request) {
 
           // Resolve role and percentage dynamically for this department
           const fallbackRulePct = ruleMap[staff.role?.toUpperCase().trim()]?.percentage || '0';
-          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staff, dept.id, fallbackRulePct);
+          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staff, dept.id, fallbackRulePct, rulesData || [], [], deptData || []);
           const userRole = configuredRole.toUpperCase().trim();
           
           const rule = ruleMap[userRole];
@@ -531,13 +612,19 @@ export async function POST(req: Request) {
           // Old format — migrate using ruleMap
           const staffObj = staffData.find((s: any) => s.id === raw);
           if (!staffObj) return null;
-          const userRole = staffObj.role.toUpperCase().trim();
+          
+          const { role: configuredRole, percentage: configuredPct } = getStaffConfig(staffObj, dept.id, '0', deptRules, addons || []);
+          const userRole = configuredRole.toUpperCase().trim();
           const rule = ruleMap[userRole];
+          
+          let effectivePct = parseFloat(configuredPct);
+          if (isNaN(effectivePct)) effectivePct = rule ? Number(rule.percentage) : 0;
+          
           return {
             entry_id: raw,
             staff_id: raw,
-            role: staffObj.role,
-            percentage: rule ? Number(rule.percentage) : 0,
+            role: configuredRole,
+            percentage: effectivePct,
             dist_type: rule?.distribution_type || 'individual',
           };
         }

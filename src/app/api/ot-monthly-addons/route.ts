@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         amount_source: a.amount_source || 'TDA',
         manual_amount: a.manual_amount || null,
         exclude_main_dept_days: !!a.exclude_main_dept_days,
+        custom_heading: a.custom_heading || null,
       }));
 
       const { error: insertError } = await supabase
@@ -77,8 +78,20 @@ export async function POST(request: Request) {
         .insert(payload);
 
       if (insertError) {
-        console.error('Error inserting OT addons:', insertError);
-        return NextResponse.json({ error: insertError.message }, { status: 500 });
+        // If custom_heading column doesn't exist yet, retry without it
+        if (insertError.message?.includes('custom_heading')) {
+          const fallbackPayload = payload.map(({ custom_heading, ...rest }: any) => rest);
+          const { error: retryError } = await supabase
+            .from('ot_monthly_addons')
+            .insert(fallbackPayload);
+          if (retryError) {
+            console.error('Error inserting OT addons (fallback):', retryError);
+            return NextResponse.json({ error: retryError.message }, { status: 500 });
+          }
+        } else {
+          console.error('Error inserting OT addons:', insertError);
+          return NextResponse.json({ error: insertError.message }, { status: 500 });
+        }
       }
     }
 

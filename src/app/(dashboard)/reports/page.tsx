@@ -20,6 +20,7 @@ interface StaffReport {
   // Universal breakdown fields (built by API for ALL departments)
   breakdown_lines?: string[];
   working_amount?: number;
+  working_amount_lines?: string[];
   display_percentage?: string;
   division_info?: string;
   // OT case-type breakdown (still available for exports)
@@ -378,7 +379,7 @@ export default function ReportsPage() {
                 <thead>
                   <tr>
                     <th style={{ width: '180px' }}>Staff</th>
-                    <th style={{ textAlign: 'right', width: '120px' }}>Working Amt</th>
+                    <th style={{ textAlign: 'left', width: '160px' }}>Working Amt</th>
                     <th style={{ textAlign: 'center', width: '100px' }}>%</th>
                     <th style={{ textAlign: 'center', width: '110px' }}>Division</th>
                     <th style={{ width: '260px' }}>Breakdown</th>
@@ -414,15 +415,27 @@ export default function ReportsPage() {
                               )}
                             </div>
 
-                            {/* Working Amount */}
-                            <span style={{ textAlign: 'right', color: '#cbd5e1', fontSize: '13px', fontWeight: 500 }}>
-                              ₹{(s.working_amount || 0).toLocaleString('en-IN')}
-                            </span>
+                            {/* Working Amount — per-percentage lines */}
+                            <div style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: 500, lineHeight: '1.6' }}>
+                              {(s as any).working_amount_lines && (s as any).working_amount_lines.length > 0 ? (
+                                (s as any).working_amount_lines.map((line: string, i: number) => (
+                                  <div key={i} style={{ fontSize: '11px' }}>{line}</div>
+                                ))
+                              ) : (
+                                <span>₹{(s.working_amount || 0).toLocaleString('en-IN')}</span>
+                              )}
+                            </div>
 
                             {/* Percentage */}
-                            <span style={{ textAlign: 'center', color: '#f59e0b', fontSize: '12px', fontWeight: 600 }}>
-                              {s.display_percentage || '-'}
-                            </span>
+                            <div style={{ textAlign: 'center', color: '#f59e0b', fontSize: '12px', fontWeight: 600, lineHeight: '1.6' }}>
+                              {(s as any).display_percentage_lines && (s as any).display_percentage_lines.length > 0 ? (
+                                (s as any).display_percentage_lines.map((pct: string, i: number) => (
+                                  <div key={i}>{pct}</div>
+                                ))
+                              ) : (
+                                <span>{s.display_percentage || '-'}</span>
+                              )}
+                            </div>
 
                             {/* Division Info */}
                             <span style={{

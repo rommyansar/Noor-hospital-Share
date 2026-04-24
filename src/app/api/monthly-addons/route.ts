@@ -58,12 +58,25 @@ export async function POST(req: Request) {
     applied_rules: a.applied_rules || [],
     amount_source: a.amount_source || 'TDA',
     manual_amount: a.manual_amount || null,
+    custom_heading: a.custom_heading || null,
   }));
 
-  const { data, error } = await supabase
+  // Try insert with custom_heading; if column doesn't exist yet, retry without it
+  let { data, error } = await supabase
     .from('monthly_department_addons')
     .insert(entriesToInsert)
     .select();
+
+  if (error && error.message?.includes('custom_heading')) {
+    // Column doesn't exist yet — strip it and retry
+    const fallbackEntries = entriesToInsert.map(({ custom_heading, ...rest }: any) => rest);
+    const fallbackResult = await supabase
+      .from('monthly_department_addons')
+      .insert(fallbackEntries)
+      .select();
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   

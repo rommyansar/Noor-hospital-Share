@@ -27,11 +27,38 @@ function MultiSelect({ options, selected, onChange, placeholder }: { options: {v
   const toggle = (val: string) => selected.includes(val) ? onChange(selected.filter(s => s !== val)) : onChange([...selected, val]);
   const filtered = options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()));
 
+  const selectedLabels = selected.map(val => {
+    const opt = options.find(o => o.value === val);
+    return { value: val, label: opt?.label || val };
+  });
+
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="w-full text-left truncate px-4 py-3 rounded-lg border border-slate-600 bg-slate-800 text-sm text-slate-200 min-h-[44px] hover:border-slate-500 transition-colors" onClick={() => setOpen(!open)}>
-        {selected.length ? <span className="text-emerald-400 font-medium">{selected.length} Selected</span> : <span className="text-slate-400">{placeholder}</span>}
-      </button>
+      <div
+        className="w-full text-left px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-sm text-slate-200 min-h-[44px] hover:border-slate-500 transition-colors cursor-pointer flex flex-wrap items-center gap-1.5"
+        onClick={() => setOpen(!open)}
+      >
+        {selectedLabels.length > 0 ? (
+          selectedLabels.map(item => (
+            <span
+              key={item.value}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 whitespace-nowrap"
+            >
+              {item.label}
+              <button
+                type="button"
+                className="ml-0.5 text-emerald-400/60 hover:text-red-400 transition-colors text-sm leading-none"
+                onClick={(e) => { e.stopPropagation(); onChange(selected.filter(s => s !== item.value)); }}
+                title={`Remove ${item.label}`}
+              >
+                ×
+              </button>
+            </span>
+          ))
+        ) : (
+          <span className="text-slate-400 py-0.5">{placeholder}</span>
+        )}
+      </div>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-72 max-h-80 overflow-y-auto bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 p-2 block">
           <input type="text" placeholder="Search staff..." className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2.5 rounded-lg mb-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40" value={query} onChange={e => setQuery(e.target.value)} autoFocus />
@@ -398,7 +425,8 @@ export default function OTEntryPage() {
             applied_rules: a.applied_rules || [],
             amount_source: a.amount_source || 'TDA',
             manual_amount: a.manual_amount || '',
-            exclude_main_dept_days: !!a.exclude_main_dept_days
+            exclude_main_dept_days: !!a.exclude_main_dept_days,
+            custom_heading: a.custom_heading || null
           }))
         })
       });
@@ -1043,6 +1071,26 @@ export default function OTEntryPage() {
                             })}
                             {aRules.length === 0 && <span className="text-xs text-slate-500 italic">No rules defined in dept.</span>}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Custom Heading for Report */}
+                      {addon.addon_department_id && (
+                        <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                          <p className="text-xs font-semibold text-slate-400 mb-2">REPORT SECTION HEADING (OPTIONAL)</p>
+                          <input
+                            type="text"
+                            className="text-input w-full"
+                            value={addon.custom_heading || ''}
+                            onChange={(e) => {
+                              const next = [...addons];
+                              next[aIdx] = { ...next[aIdx], custom_heading: e.target.value };
+                              setAddons(next);
+                            }}
+                            placeholder="e.g. Pharmacy Staff Share"
+                            style={{ minHeight: '38px', fontSize: '13px' }}
+                          />
+                          <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>This text will appear as a heading label in the report before this add-on section.</p>
                         </div>
                       )}
                     </div>

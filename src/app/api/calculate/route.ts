@@ -321,6 +321,7 @@ async function processAddons(
             present_days: presentDays,
             absent_days: absentDays,
             prorate_ratio: attRule !== 'none' ? `${presentDays}/${daysInMonth}` : undefined,
+            custom_heading: addon.custom_heading || null,
           },
         });
       }

@@ -40,6 +40,7 @@ interface StaffReportData {
   // Universal breakdown fields (built by API for ALL departments)
   breakdown_lines?: string[];
   working_amount?: number;
+  working_amount_lines?: string[];
   display_percentage?: string;
   division_info?: string;
   // OT case-type breakdown
@@ -59,6 +60,7 @@ interface StaffReportData {
     present_days?: number; total_days?: number; absent_days?: number;
     present_count?: number; distribution_type?: string;
     amount_source?: string; manual_amount?: number | null;
+    custom_heading?: string | null;
   }[];
 }
 
@@ -84,7 +86,12 @@ const MONTHS = [
 /** Normalize a percentage value to always end with %. Handles strings like "10%", "3.75", "10" etc. */
 function normPct(val: string | number): string {
   if (typeof val === 'number') {
-    return val % 1 === 0 ? `${val}%` : `${parseFloat(val.toFixed(4))}%`;
+    if (val % 1 === 0) return `${val}%`;
+    const s4 = val.toFixed(4);
+    if (s4.endsWith('3333') || s4.endsWith('6667')) {
+      return `${parseFloat(val.toFixed(1))}%`;
+    }
+    return `${parseFloat(val.toFixed(4))}%`;
   }
   const s = String(val).trim();
   if (!s) return '';
@@ -93,15 +100,20 @@ function normPct(val: string | number): string {
   // Raw numeric string
   const n = parseFloat(s);
   if (!isNaN(n)) {
-    return n % 1 === 0 ? `${n}%` : `${parseFloat(n.toFixed(4))}%`;
+    if (n % 1 === 0) return `${n}%`;
+    const s4 = n.toFixed(4);
+    if (s4.endsWith('3333') || s4.endsWith('6667')) {
+      return `${parseFloat(n.toFixed(1))}%`;
+    }
+    return `${parseFloat(n.toFixed(4))}%`;
   }
   return s;
 }
 
-/** Join an array of raw pct values into a clean comma-space-separated string with % on each. */
+/** Join an array of raw pct values into a clean newline-separated string with % on each. */
 function joinPcts(pcts: (string | number)[]): string {
   const normalized = [...new Set(pcts.map(normPct))].filter(Boolean);
-  return normalized.join(', ');
+  return normalized.join('\n');
 }
 
 /** Convert Unicode chars (→, ₹) to PDF-safe ASCII equivalents */
@@ -120,23 +132,32 @@ interface NormalRow {
   percentage: string;
   shareAmount: number;
   otBreakdown: string;
+  origin: string;
 }
 
 function buildNormalRows(data: ReportExportData): NormalRow[] {
   // Universal: always build breakdown for ALL departments
   return data.staff.map((s, idx) => {
-    const workAmount = s.working_amount || 0;
     const displayPercentage = s.display_percentage || '';
     // Use breakdown_lines from API, sanitized for PDF
     const otBreakdown = sanitizePdfText((s.breakdown_lines || []).join('\n'));
 
+    // Use per-percentage working amount lines if available, else fall back to combined total
+    let workAmount: number | string;
+    if (s.working_amount_lines && s.working_amount_lines.length > 0) {
+      workAmount = sanitizePdfText(s.working_amount_lines.join('\n'));
+    } else {
+      workAmount = Math.round((s.working_amount || 0) * 100) / 100;
+    }
+
     return {
       srNo: idx + 1,
       staffName: s.staff_name,
-      workAmount: Math.round(workAmount * 100) / 100,
+      workAmount,
       percentage: displayPercentage,
       shareAmount: Math.round(s.total_share * 100) / 100,
       otBreakdown,
+      origin: s.origin_department,
     };
   });
 }
@@ -186,7 +207,13 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
 
     // Use universal fields from API (same as normal report)
     const displayPercentage = s.display_percentage || '';
-    const workingAmount = s.working_amount || 0;
+    // Use per-percentage working amount lines if available
+    let workingAmount: number | string;
+    if (s.working_amount_lines && s.working_amount_lines.length > 0) {
+      workingAmount = sanitizePdfText(s.working_amount_lines.join('\n'));
+    } else {
+      workingAmount = s.working_amount || 0;
+    }
     const deptIncome = data.total_income;
 
     // Division info
@@ -210,7 +237,7 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       offCLDays,
       workingDays,
       deptIncome,
-      workingAmount: Math.round(workingAmount * 100) / 100,
+      workingAmount: typeof workingAmount === 'string' ? workingAmount : Math.round(workingAmount * 100) / 100,
       percentage: displayPercentage,
       distributionType,
       groupCount,
@@ -265,13 +292,37 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
   }
   headerRows.push([]);
 
+  // Extract custom headings
+  const addonCustomHeadings: Record<string, string> = {};
+  for (const staff of data.staff) {
+    if (staff.addon_contributions) {
+      for (const ac of staff.addon_contributions) {
+        if (ac.custom_heading) {
+          addonCustomHeadings[ac.department] = ac.custom_heading;
+        }
+      }
+    }
+  }
+
   let sheetData: (string | number)[][];
 
   if (type === 'normal') {
     const rows = buildNormalRows(data);
     // Universal: always include Breakdown column
     const tableHeader = ['Sr. No.', 'Staff Name', 'Work Amount (Rs.)', 'Percentage (%)', 'Breakdown', 'Share Amount (Rs.)'];
-    const tableRows = rows.map(r => [r.srNo, r.staffName, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]);
+    const tableRows: (string | number)[][] = [];
+    let currentOrigin = data.department_name;
+    
+    rows.forEach(r => {
+      if (r.origin !== data.department_name && r.origin !== currentOrigin) {
+        currentOrigin = r.origin;
+        const customHeading = addonCustomHeadings[r.origin];
+        if (customHeading) {
+          tableRows.push([customHeading, '', '', '', '', '']);
+        }
+      }
+      tableRows.push([r.srNo, r.staffName, r.workAmount, r.percentage, r.otBreakdown, r.shareAmount]);
+    });
 
     sheetData = [
       ...headerRows,
@@ -288,20 +339,32 @@ export function exportExcel(data: ReportExportData, type: ReportType): void {
       'Calculation Breakdown',
       'Final Share (Rs.)',
     ];
-    const tableRows = rows.map(r => [
-      r.srNo,
-      r.staffName,
-      r.origin,
-      r.totalDays,
-      r.offCLDays,
-      r.workingDays,
-      r.workingAmount,
-      r.percentage,
-      r.distributionType,
-      r.groupCount,
-      r.calculationBreakdown,
-      r.finalShare,
-    ]);
+    const tableRows: (string | number)[][] = [];
+    let currentOrigin = data.department_name;
+    
+    rows.forEach(r => {
+      if (r.origin !== data.department_name && r.origin !== currentOrigin) {
+        currentOrigin = r.origin;
+        const customHeading = addonCustomHeadings[r.origin];
+        if (customHeading) {
+          tableRows.push([customHeading, '', '', '', '', '', '', '', '', '', '', '']);
+        }
+      }
+      tableRows.push([
+        r.srNo,
+        r.staffName,
+        r.origin,
+        r.totalDays,
+        r.offCLDays,
+        r.workingDays,
+        r.workingAmount,
+        r.percentage,
+        r.distributionType,
+        r.groupCount,
+        r.calculationBreakdown,
+        r.finalShare,
+      ]);
+    });
 
     sheetData = [
       ...headerRows,
@@ -371,6 +434,18 @@ const INDIAN_LEGAL_HEIGHT = 215; // landscape height
 
 export function exportPDF(data: ReportExportData, type: ReportType): void {
   const isDetailed = type === 'detailed';
+
+  // Extract custom headings for PDF
+  const addonCustomHeadings: Record<string, string> = {};
+  for (const staff of data.staff) {
+    if (staff.addon_contributions) {
+      for (const ac of staff.addon_contributions) {
+        if (ac.custom_heading) {
+          addonCustomHeadings[ac.department] = ac.custom_heading;
+        }
+      }
+    }
+  }
 
   const doc = new jsPDF({
     orientation: isDetailed ? 'landscape' : 'portrait',
@@ -446,14 +521,26 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     // Universal: always include Breakdown column
     const headCols = ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'Breakdown', 'Share Amount (Rs.)'];
 
-    const bodyRows = rows.map(r => [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
+    const bodyRows: any[][] = [];
+    let currentOrigin = data.department_name;
+    
+    rows.forEach(r => {
+      if (r.origin !== data.department_name && r.origin !== currentOrigin) {
+        currentOrigin = r.origin;
+        const customHeading = addonCustomHeadings[r.origin];
+        if (customHeading) {
+          bodyRows.push([{ content: customHeading, colSpan: 6, styles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0] } }]);
+        }
+      }
+      bodyRows.push([r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
+    });
 
     const colStyles: Record<number, any> = {
       0: { halign: 'center', cellWidth: 10 },
-      1: { halign: 'left', cellWidth: 40 },
-      2: { halign: 'right', cellWidth: 25 },
-      3: { halign: 'center', cellWidth: 15 },
-      4: { halign: 'left', cellWidth: 65 },
+      1: { halign: 'left', cellWidth: 35 },
+      2: { halign: 'left', cellWidth: 35 },
+      3: { halign: 'center', cellWidth: 20 },
+      4: { halign: 'left', cellWidth: 55 },
       5: { halign: 'right', cellWidth: 25 },
     };
 
@@ -519,7 +606,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       r.totalDays,
       r.offCLDays,
       r.workingDays,
-      `Rs. ${formatCurrencyShort(r.workingAmount)}`,
+      typeof r.workingAmount === 'string' ? r.workingAmount : `Rs. ${formatCurrencyShort(r.workingAmount)}`,
       r.percentage,
       r.distributionType,
       r.groupCount,
@@ -535,7 +622,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       3:  { halign: 'center', cellWidth: 14 },    // Off/CL
       4:  { halign: 'center', cellWidth: 16 },    // Working Days
       5:  { halign: 'right', cellWidth: 30 },     // Working Amount
-      6:  { halign: 'center', cellWidth: 14 },    // %
+      6:  { halign: 'center', cellWidth: 18 },    // %
       7:  { halign: 'center', cellWidth: 20 },    // Distribution
       8:  { halign: 'center', cellWidth: 14 },    // Group Count
       9:  { halign: 'left', cellWidth: 'auto' },  // Calculation Breakdown
@@ -643,6 +730,15 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
 
     // Render each addon department section
     for (const [deptName, deptRows] of Object.entries(addonByDept)) {
+      const customHeading = addonCustomHeadings[deptName];
+      if (customHeading) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(customHeading, 14, currentY + 2);
+        currentY += 8;
+      }
+
       currentY = renderSection(
         `▸ ADD-ON: ${deptName.toUpperCase()} (${deptRows.length} Staff)`,
         deptRows,
@@ -794,7 +890,32 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
     // ── Table ──
     const rows = buildNormalRows(data);
     const headCols = ['Sr.', 'Staff Name', 'Work Amount (Rs.)', '%', 'Breakdown', 'Share Amount (Rs.)'];
-    const bodyRows = rows.map(r => [r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
+
+    // Extract custom headings for addon departments
+    const addonCustomHeadings: Record<string, string> = {};
+    for (const staff of data.staff) {
+      if (staff.addon_contributions) {
+        for (const ac of staff.addon_contributions) {
+          if (ac.custom_heading) {
+            addonCustomHeadings[ac.department] = ac.custom_heading;
+          }
+        }
+      }
+    }
+
+    const bodyRows: any[][] = [];
+    let currentOrigin = data.department_name;
+    
+    rows.forEach(r => {
+      if (r.origin !== data.department_name && r.origin !== currentOrigin) {
+        currentOrigin = r.origin;
+        const customHeading = addonCustomHeadings[r.origin];
+        if (customHeading) {
+          bodyRows.push([{ content: customHeading, colSpan: 6, styles: { fontStyle: 'bold', halign: 'left', fillColor: [240, 240, 240], textColor: [0, 0, 0] } }]);
+        }
+      }
+      bodyRows.push([r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
+    });
 
     const colStyles: Record<number, any> = {
       0: { halign: 'center', cellWidth: 10 },

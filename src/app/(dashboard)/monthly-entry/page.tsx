@@ -422,7 +422,8 @@ export default function MonthlyEntryPage() {
             attendance_rule: a.attendance_rule || 'none',
             applied_rules: a.applied_rules || [],
             amount_source: a.amount_source || 'TDA',
-            manual_amount: a.amount_source === 'MANUAL' ? parseFloat(a.manual_amount) || null : null
+            manual_amount: a.amount_source === 'MANUAL' ? parseFloat(a.manual_amount) || null : null,
+            custom_heading: a.custom_heading || null
           }))
         })
       });
@@ -1448,6 +1449,24 @@ export default function MonthlyEntryPage() {
                           <option value="daily" style={{ backgroundColor: '#1e293b' }}>Global Daily (Day Selection)</option>
                         </select>
                         <p style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>Enforces deduction logic independently for internal Add-on Staff.</p>
+                      </div>
+
+                      {/* Custom Heading for Report */}
+                      <div className="p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+                        <label className="form-label text-xs mb-2">Report Section Heading (optional)</label>
+                        <input
+                          type="text"
+                          className="input-field"
+                          value={addon.custom_heading || ''}
+                          onChange={(e) => {
+                            const next = [...addons];
+                            next[index].custom_heading = e.target.value;
+                            setAddons(next);
+                          }}
+                          placeholder="e.g. Pharmacy Staff Share"
+                          style={{ fontSize: '13px', padding: '8px 12px' }}
+                        />
+                        <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>This text will appear as a heading label in the report before this add-on section.</p>
                       </div>
 
                     </div>

@@ -315,6 +315,7 @@ export async function POST(req: Request) {
                 absent_days: absentDays,
                 valid_days: validDays,
                 staff_count: staffCount,
+                custom_heading: addon.custom_heading || null,
               },
             });
           }

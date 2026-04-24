@@ -60,6 +60,10 @@ export async function GET(req: Request) {
   // Build set of dates present for each staff to avoid double counting for daily rules
   const presentDates: Record<string, Set<string>> = {};
 
+  // Track first-seen order of add-on departments (entry order, not alphabetical)
+  const addonDeptFirstSeen: Map<string, number> = new Map();
+  let addonDeptSeenCounter = 0;
+
   for (const r of filteredResults) {
     const breakdownObj = r.breakdown as Record<string, any> | null;
     const isAddon = breakdownObj?.type === 'addon_share' || !!breakdownObj?.addon_department;
@@ -115,6 +119,11 @@ export async function GET(req: Request) {
 
     // Track addon contributions for combined display
     if (isAddon && breakdownObj) {
+      // Track add-on department entry order
+      const addonDeptName = breakdownObj.addon_department || 'Unknown';
+      if (!addonDeptFirstSeen.has(addonDeptName)) {
+        addonDeptFirstSeen.set(addonDeptName, addonDeptSeenCounter++);
+      }
       staffTotals[r.staff_id].addon_contributions.push({
         department: breakdownObj.addon_department || 'Unknown',
         share: r.final_share,
@@ -131,6 +140,7 @@ export async function GET(req: Request) {
         distribution_type: breakdownObj.distribution_type || ((breakdownObj as any).dist_type) || 'individual',
         amount_source: breakdownObj.amount_source || 'TDA',
         manual_amount: breakdownObj.manual_amount || null,
+        custom_heading: breakdownObj.custom_heading || null,
       });
       // If this staff ONLY has addon entries (no core OT), use addon dept name
       if (!staffTotals[r.staff_id].combined_working_amount && staffTotals[r.staff_id].origin_department === mainDeptName) {
@@ -206,9 +216,11 @@ export async function GET(req: Request) {
       return b.total_share - a.total_share;
     }
 
-    // 3. For Add-On Departments: group by dept name (alphabetical), then by amount DESC
+    // 3. For Add-On Departments: group by dept name (entry order), then by amount DESC
     if (a.origin_department !== b.origin_department) {
-      return a.origin_department.localeCompare(b.origin_department);
+      const aOrder = addonDeptFirstSeen.get(a.origin_department) ?? 999;
+      const bOrder = addonDeptFirstSeen.get(b.origin_department) ?? 999;
+      return aOrder - bOrder;
     }
     return b.total_share - a.total_share;
   });
@@ -264,6 +276,8 @@ export async function GET(req: Request) {
 
     // ── Build universal breakdown_lines for EVERY staff ──
     const lines: string[] = [];
+    const workAmtLines: string[] = [];
+    const breakdownPcts: string[] = [];
     const rawCases = staff.raw_cases || [];
     const addonContribs = staff.addon_contributions || [];
 
@@ -279,14 +293,16 @@ export async function GET(req: Request) {
     }
 
     if (rawCases.length > 0) {
-      // OT core staff — Aggregate purely by Percentage (User requested strict percentage-wise grouping)
-      const groups: Record<string, { pct: number, totalAmount: number, totalShare: number }> = {};
+      // OT core staff — Aggregate by Percentage + mode + group_count
+      // For group-mode cases, show the actual per-person effective percentage
+      const groups: Record<string, { pct: number, totalAmount: number, totalShare: number, mode: string, group_count: number }> = {};
       
       for (const rc of rawCases) {
-        const key = `${rc.pct}`;
+        // Group by pct + mode + group_count so individual and group entries stay separate
+        const key = `${rc.pct}-${rc.mode}-${rc.group_count}`;
         
         if (!groups[key]) {
-          groups[key] = { pct: rc.pct, totalAmount: 0, totalShare: 0 };
+          groups[key] = { pct: rc.pct, totalAmount: 0, totalShare: 0, mode: rc.mode, group_count: rc.group_count || 1 };
         }
         groups[key].totalAmount += rc.amount;
         groups[key].totalShare += rc.share;
@@ -296,7 +312,21 @@ export async function GET(req: Request) {
         const amtStr = Math.round(g.totalAmount).toLocaleString('en-IN');
         const shrStr = Math.round(g.totalShare).toLocaleString('en-IN');
         
-        lines.push(`[${g.pct}% Rule]: ₹${amtStr} = ₹${shrStr}`);
+        if (g.mode === 'group' && g.group_count > 1) {
+          const rawPct = g.pct / g.group_count;
+          let effectivePct = parseFloat(rawPct.toFixed(4));
+          const s4 = effectivePct.toFixed(4);
+          if (s4.endsWith('3333') || s4.endsWith('6667')) {
+            effectivePct = parseFloat(rawPct.toFixed(1));
+          }
+          lines.push(`${effectivePct}% (${g.pct}% ÷ ${g.group_count}): ₹${amtStr} = ₹${shrStr}`);
+          breakdownPcts.push(`${effectivePct}%`);
+          workAmtLines.push(`₹${amtStr}`);
+        } else {
+          lines.push(`${g.pct}%: ₹${amtStr} = ₹${shrStr}`);
+          breakdownPcts.push(`${g.pct}%`);
+          workAmtLines.push(`₹${amtStr}`);
+        }
       }
     } else if (staff.rule_entries && staff.rule_entries.length > 0) {
       // Normal department rule-based staff — group by percentage + distribution
@@ -313,6 +343,9 @@ export async function GET(req: Request) {
         const incomeStr = Math.round(g.income).toLocaleString('en-IN');
         const prorateText = g.prorate ? ` × ${g.prorate}` : '';
         
+        breakdownPcts.push(`${pctVal}%`);
+        workAmtLines.push(`₹${incomeStr}`);
+        
         if (g.dist === 'group' && g.count > 1) {
           const poolStr = Math.round(g.pool).toLocaleString('en-IN');
           const shareStr = Math.round(g.share).toLocaleString('en-IN');
@@ -328,6 +361,31 @@ export async function GET(req: Request) {
       for (const we of staff.work_entries) {
         const pct = parseFloat(we.percentage) || 0;
         lines.push(`${pct}% → ₹${we.work_amount.toLocaleString('en-IN')} = ₹${we.calculated_share.toLocaleString('en-IN')}`);
+        breakdownPcts.push(`${pct}%`);
+        workAmtLines.push(`₹${we.work_amount.toLocaleString('en-IN')}`);
+      }
+    }
+
+    // For main department staff: merge same-percentage entries in display columns
+    // (e.g. two "1% – ₹300" and "1% – ₹500" become "1% – ₹800")
+    // This only applies to main department, add-on percentages stay separate.
+    const isMainDeptStaff = staff.origin_department === mainDeptName;
+    if (isMainDeptStaff && breakdownPcts.length > 1) {
+      const mergedPctMap = new Map<string, number>();
+      for (let i = 0; i < breakdownPcts.length; i++) {
+        const pct = breakdownPcts[i];
+        const amtStr = workAmtLines[i] || '₹0';
+        const amt = parseFloat(amtStr.replace(/[₹,]/g, '').replace(/Rs\./g, '').trim()) || 0;
+        mergedPctMap.set(pct, (mergedPctMap.get(pct) || 0) + amt);
+      }
+      if (mergedPctMap.size < breakdownPcts.length) {
+        // Only apply if merging actually reduces entries
+        breakdownPcts.length = 0;
+        workAmtLines.length = 0;
+        for (const [pct, amt] of mergedPctMap.entries()) {
+          breakdownPcts.push(pct);
+          workAmtLines.push(`₹${Math.round(amt).toLocaleString('en-IN')}`);
+        }
       }
     }
 
@@ -338,6 +396,9 @@ export async function GET(req: Request) {
         // Use adjusted base as the working amount (attendance is already factored in)
         const acAmt = ac.adjusted_base || ac.base_amount || 0;
         const acAmtStr = Math.round(acAmt).toLocaleString('en-IN');
+        
+        breakdownPcts.push(`${pctVal}%`);
+        workAmtLines.push(`₹${acAmtStr}`);
         
         if ((ac as any).distribution_type === 'group' && ((ac as any).present_count || 1) > 1) {
           const poolStr = Math.round((ac as any).pool || ((ac.share || 0) * (ac as any).present_count)).toLocaleString('en-IN');
@@ -353,7 +414,7 @@ export async function GET(req: Request) {
 
     // lines.push(`= Total Share: ₹${Math.round(staff.total_share).toLocaleString('en-IN')}`);
 
-    // Compute working amount (core amounts only, with addon fallback)
+    // Compute working amount (keep numeric total for backward compat)
     let workingAmount = 0;
     if (rawCases.length > 0) {
       workingAmount = rawCases.reduce((s: number, rc: any) => s + rc.amount, 0);
@@ -362,27 +423,11 @@ export async function GET(req: Request) {
     } else if (staff.work_entries && staff.work_entries.length > 0) {
       workingAmount = staff.work_entries.reduce((s: number, we: any) => s + we.work_amount, 0);
     } else if (uniqueAddons.length > 0) {
-      // Add-on-only staff: use the adjusted_base (attendance-adjusted amount)
       workingAmount = uniqueAddons.reduce((s: number, ac: any) => s + (ac.adjusted_base || ac.base_amount || 0), 0);
     }
 
-    // Display percentage
-    const allPcts: string[] = [];
-    if (rawCases.length > 0) {
-      allPcts.push(...rawCases.map((rc: any) => `${parseFloat(rc.pct)}%`));
-    }
-    if (staff.rule_entries && staff.rule_entries.length > 0) {
-      allPcts.push(...staff.rule_entries.map((re: any) => `${parseFloat(re.percentage) || 0}%`));
-    }
-    if (staff.work_entries && staff.work_entries.length > 0) {
-      allPcts.push(...staff.work_entries.map((we: any) => `${parseFloat(we.percentage) || 0}%`));
-    }
-    if (uniqueAddons.length > 0) {
-      allPcts.push(...uniqueAddons.map((ac: any) => `${parseFloat(String(ac.pct).replace('%', '')) || 0}%`));
-    }
-    
-    // Deduplicate array to show all distinct percentages applied to this staff and hide zeros (often fixed amounts)
-    const uniqueDisplayPcts = [...new Set(allPcts)].filter(p => !['0%', 'NaN%'].includes(p));
+    // Display percentage — keep all entries 1:1 with workAmtLines (no dedup)
+    const uniqueDisplayPcts = breakdownPcts.filter(p => !['0%', 'NaN%'].includes(p));
 
     // Compute division info
     let divisionInfo = 'Individual (no division)';
@@ -406,7 +451,9 @@ export async function GET(req: Request) {
 
     staff.breakdown_lines = lines;
     staff.working_amount = Math.round(workingAmount);
-    staff.display_percentage = uniqueDisplayPcts.join(', ');
+    staff.working_amount_lines = workAmtLines;
+    staff.display_percentage = uniqueDisplayPcts.join('\n');
+    staff.display_percentage_lines = uniqueDisplayPcts;
     staff.division_info = divisionInfo;
   }
 

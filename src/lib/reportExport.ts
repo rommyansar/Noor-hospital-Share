@@ -988,3 +988,267 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
   doc.save(fileName);
 }
 
+// ── INDIVIDUAL-WISE REPORT Export ───────────────
+
+export interface IndividualReportData {
+  year: number;
+  month: number;
+  department_ids: string[];
+  department_names: Record<string, string>;
+  staff_count: number;
+  grand_total: number;
+  staff: {
+    staff_id: string;
+    staff_name: string;
+    staff_code?: string;
+    role: string;
+    dept_totals: Record<string, number>;
+    grand_total: number;
+  }[];
+}
+
+export function exportIndividualPDF(data: IndividualReportData): void {
+  const deptIds = data.department_ids;
+  const deptNames = data.department_names;
+
+  // Use landscape Legal for wide tables
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: [215, 356], // Indian Legal landscape
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let yPos = 15;
+
+  // ── Hospital Header ──
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NOOR HOSPITAL, QADIAN', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 8;
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('INDIVIDUAL-WISE SHARE REPORT', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 8;
+
+  // ── Separator line ──
+  doc.setDrawColor(168, 85, 247); // purple
+  doc.setLineWidth(0.6);
+  doc.line(12, yPos, pageWidth - 12, yPos);
+  yPos += 6;
+
+  // ── Period info ──
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Reporting Period: ${MONTHS[data.month - 1]} ${data.year}`, 14, yPos);
+  doc.text(`Staff: ${data.staff_count}  |  Departments: ${deptIds.length}`, pageWidth - 14, yPos, { align: 'right' });
+  yPos += 6;
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Grand Total Distributed: Rs. ${formatCurrencyShort(data.grand_total)}`, 14, yPos);
+  yPos += 5;
+
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Staff-wise total share across selected departments. Amounts in Indian Rupees (Rs.).', 14, yPos);
+  doc.setTextColor(0, 0, 0);
+  yPos += 7;
+
+  // ── Build table ──
+  const headCols = ['IND No.', 'Staff Name'];
+  for (const dId of deptIds) {
+    headCols.push(deptNames[dId] || dId);
+  }
+  headCols.push('Total (Rs.)');
+
+  const bodyRows: any[][] = [];
+  data.staff.forEach((s) => {
+    const row: any[] = [s.staff_code || '-', s.staff_name];
+    for (const dId of deptIds) {
+      const amt = s.dept_totals[dId] || 0;
+      row.push(amt > 0 ? formatCurrencyShort(amt) : '-');
+    }
+    row.push(formatCurrencyShort(s.grand_total));
+    bodyRows.push(row);
+  });
+
+  // Add totals row
+  const totalRow: any[] = ['', { content: 'TOTAL', styles: { fontStyle: 'bold' } }];
+  for (const dId of deptIds) {
+    const deptTotal = data.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
+    totalRow.push({ content: formatCurrencyShort(Math.round(deptTotal * 100) / 100), styles: { fontStyle: 'bold' } });
+  }
+  totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
+  bodyRows.push(totalRow);
+
+  // Dynamic column styles (no Role column: Sr, Name, dept cols..., Total)
+  const colStyles: Record<number, any> = {
+    0: { halign: 'center', cellWidth: 10 },
+    1: { halign: 'left', cellWidth: 45 },
+  };
+  const deptColCount = deptIds.length;
+  const totalCols = 2 + deptColCount + 1;
+  for (let i = 2; i < totalCols - 1; i++) {
+    colStyles[i] = { halign: 'right', overflow: 'visible' as any };
+  }
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any };
+
+  autoTable(doc, {
+    startY: yPos,
+    head: [headCols],
+    body: bodyRows,
+    theme: 'grid',
+    styles: {
+      overflow: 'visible' as any,
+      textColor: [0, 0, 0],
+      fontSize: 8,
+    },
+    headStyles: {
+      fillColor: [126, 58, 242],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center',
+      overflow: 'linebreak',
+    },
+    bodyStyles: {
+      fontSize: 8,
+      cellPadding: 2,
+      textColor: [0, 0, 0],
+    },
+    columnStyles: colStyles,
+    alternateRowStyles: {
+      fillColor: [248, 245, 255],
+    },
+    margin: { left: 8, right: 8 },
+  });
+
+  // ── Signature Section ──
+  const finalY = (doc as any).lastAutoTable?.finalY || yPos + 50;
+  let sigY = finalY + 20;
+
+  if (sigY + 35 > pageHeight) {
+    doc.addPage();
+    sigY = 25;
+  }
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
+
+  const margin = 14;
+  const sigSpacing = (pageWidth - margin * 2) / 4;
+  const lineLen = sigSpacing - 15;
+
+  const sigFields = ['Prepared By', 'Checked By', 'Approved By', 'Date'];
+  sigFields.forEach((label, i) => {
+    const x = margin + i * sigSpacing;
+    doc.setFontSize(8);
+    doc.text(`${label}:`, x, sigY);
+    doc.setDrawColor(100, 116, 139);
+    doc.setLineWidth(0.3);
+    doc.line(x, sigY + 6, x + lineLen, sigY + 6);
+  });
+
+  // Page numbers footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Noor Hospital, Qadian — Individual Report — ${MONTHS[data.month - 1]} ${data.year} — Page ${p} of ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 5,
+      { align: 'center' }
+    );
+  }
+
+  // Save
+  const fileName = `Individual_Report_${MONTHS[data.month - 1]}_${data.year}.pdf`;
+  doc.save(fileName);
+}
+
+export function exportIndividualExcel(data: IndividualReportData): void {
+  const deptIds = data.department_ids;
+  const deptNames = data.department_names;
+
+  const wb = XLSX.utils.book_new();
+
+  const headerRows: (string | number)[][] = [
+    ['NOOR HOSPITAL, QADIAN'],
+    ['INDIVIDUAL-WISE SHARE REPORT'],
+    [],
+    [`Reporting Period: ${MONTHS[data.month - 1]} ${data.year}`],
+    [`Staff Count: ${data.staff_count}  |  Departments: ${deptIds.length}  |  Grand Total: Rs. ${data.grand_total.toLocaleString('en-IN')}/-`],
+    ['Staff-wise total share across selected departments. Amounts in Indian Rupees (Rs.).'],
+    [],
+  ];
+
+  // Table header
+  const tableHeader = ['Sr. No.', 'Staff Name', 'Role'];
+  for (const dId of deptIds) {
+    tableHeader.push(deptNames[dId] || dId);
+  }
+  tableHeader.push('Total (Rs.)');
+
+  // Table rows
+  const tableRows: (string | number)[][] = [];
+  data.staff.forEach((s, idx) => {
+    const row: (string | number)[] = [idx + 1, s.staff_name, s.role];
+    for (const dId of deptIds) {
+      const amt = s.dept_totals[dId] || 0;
+      row.push(amt > 0 ? Math.round(amt * 100) / 100 : 0);
+    }
+    row.push(Math.round(s.grand_total * 100) / 100);
+    tableRows.push(row);
+  });
+
+  // Totals row
+  const totalRow: (string | number)[] = ['', 'TOTAL', ''];
+  for (const dId of deptIds) {
+    const deptTotal = data.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
+    totalRow.push(Math.round(deptTotal * 100) / 100);
+  }
+  totalRow.push(Math.round(data.grand_total * 100) / 100);
+  tableRows.push(totalRow);
+
+  const sheetData = [
+    ...headerRows,
+    tableHeader,
+    ...tableRows,
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+  // Column widths
+  const cols = [
+    { wch: 8 },   // Sr.
+    { wch: 30 },  // Staff Name
+    { wch: 18 },  // Role
+  ];
+  for (let i = 0; i < deptIds.length; i++) {
+    cols.push({ wch: 20 });
+  }
+  cols.push({ wch: 18 }); // Total
+  ws['!cols'] = cols;
+
+  // Merge header rows
+  const totalCols = 3 + deptIds.length + 1;
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: totalCols - 1 } },
+    { s: { r: 4, c: 0 }, e: { r: 4, c: totalCols - 1 } },
+    { s: { r: 5, c: 0 }, e: { r: 5, c: totalCols - 1 } },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Individual Report');
+  const fileName = `Individual_Report_${MONTHS[data.month - 1]}_${data.year}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
+

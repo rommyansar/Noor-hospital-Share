@@ -5,7 +5,7 @@ import { FileBarChart, ChevronDown, ChevronUp, Download, FileSpreadsheet, FileTe
 import { useToast } from '@/components/ui/ToastProvider';
 import type { Department } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
-import { exportExcel, exportPDF, exportCombinedPDF, type ReportExportData, type ReportType } from '@/lib/reportExport';
+import { exportExcel, exportPDF, exportCombinedPDF, exportIndividualPDF, exportIndividualExcel, type ReportExportData, type ReportType, type IndividualReportData } from '@/lib/reportExport';
 
 interface StaffReport {
   staff_id: string;
@@ -63,6 +63,12 @@ export default function ReportsPage() {
   const [selectedMultiDepts, setSelectedMultiDepts] = useState<Set<string>>(new Set());
   const [recalculateBeforeExport, setRecalculateBeforeExport] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // Individual-wise report state
+  const [reportView, setReportView] = useState<'department' | 'individual'>('department');
+  const [individualDepts, setIndividualDepts] = useState<Set<string>>(new Set());
+  const [individualReport, setIndividualReport] = useState<IndividualReportData | null>(null);
+  const [individualLoading, setIndividualLoading] = useState(false);
 
   const fetchDepartments = async () => {
     const res = await fetch('/api/departments');
@@ -235,6 +241,47 @@ export default function ReportsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportModal]);
 
+  // ── Individual Report Handlers ──
+  const fetchIndividualReport = async () => {
+    if (individualDepts.size === 0) {
+      addToast('error', 'Select at least one department');
+      return;
+    }
+    setIndividualLoading(true);
+    try {
+      const deptIdsParam = Array.from(individualDepts).join(',');
+      const cb = new Date().getTime();
+      const res = await fetch(`/api/reports/individual?department_ids=${deptIdsParam}&year=${year}&month=${month}&_cb=${cb}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok) {
+        setIndividualReport(data);
+        if (data.staff.length === 0) {
+          addToast('info', 'No data found for selected departments this month.');
+        }
+      } else {
+        addToast('error', data.error || 'Failed to load individual report');
+      }
+    } catch {
+      addToast('error', 'An error occurred loading individual report');
+    }
+    setIndividualLoading(false);
+  };
+
+  const handleIndividualExport = (format: 'pdf' | 'excel') => {
+    if (!individualReport || individualReport.staff.length === 0) {
+      addToast('error', 'No individual report data to export');
+      return;
+    }
+    try {
+      if (format === 'pdf') exportIndividualPDF(individualReport);
+      else exportIndividualExcel(individualReport);
+      addToast('success', `Individual report exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      addToast('error', 'Failed to export individual report');
+      console.error(err);
+    }
+  };
+
   const [calculating, setCalculating] = useState(false);
 
   const runCalculation = async (type: 'department' | 'overall') => {
@@ -314,6 +361,36 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* ── View Toggle Tabs ── */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(71, 85, 105, 0.3)' }}>
+        <button
+          onClick={() => setReportView('department')}
+          style={{
+            flex: 1, padding: '12px 20px', border: 'none', cursor: 'pointer', transition: 'all 0.2s ease',
+            borderRight: '1px solid rgba(71, 85, 105, 0.3)',
+            background: reportView === 'department' ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.08))' : 'rgba(15, 23, 42, 0.4)',
+            color: reportView === 'department' ? '#34d399' : '#64748b',
+            fontSize: '14px', fontWeight: reportView === 'department' ? 700 : 500,
+          }}
+        >
+          <FileBarChart size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
+          Department Report
+        </button>
+        <button
+          onClick={() => setReportView('individual')}
+          style={{
+            flex: 1, padding: '12px 20px', border: 'none', cursor: 'pointer', transition: 'all 0.2s ease',
+            background: reportView === 'individual' ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(168, 85, 247, 0.08))' : 'rgba(15, 23, 42, 0.4)',
+            color: reportView === 'individual' ? '#c084fc' : '#64748b',
+            fontSize: '14px', fontWeight: reportView === 'individual' ? 700 : 500,
+          }}
+        >
+          <FileText size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
+          Individual-wise Report
+        </button>
+      </div>
+
+      {reportView === 'department' && (<>
       {/* Filters */}
       <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -514,6 +591,200 @@ export default function ReportsPage() {
               </table>
             </div>
           </div>
+        </>
+      )}
+      </>)}
+
+      {/* ── Individual-wise Report View ── */}
+      {reportView === 'individual' && (
+        <>
+          {/* Department Selection + Filters */}
+          <div className="glass-card" style={{ padding: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>Select Departments</h3>
+                <p style={{ fontSize: '12px', color: '#64748b' }}>Choose which departments to include in the individual staff totals</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (individualDepts.size === departments.length) setIndividualDepts(new Set());
+                  else setIndividualDepts(new Set(departments.map(d => d.id)));
+                }}
+                style={{ background: 'none', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', color: '#c084fc', fontSize: '12px', cursor: 'pointer', fontWeight: 600, padding: '6px 12px' }}
+              >
+                {individualDepts.size === departments.length ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+              {departments.map((d) => (
+                <label key={d.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+                  padding: '8px 12px', borderRadius: '8px',
+                  background: individualDepts.has(d.id) ? 'rgba(168, 85, 247, 0.1)' : 'rgba(15, 23, 42, 0.3)',
+                  border: `1px solid ${individualDepts.has(d.id) ? 'rgba(168, 85, 247, 0.3)' : 'rgba(71, 85, 105, 0.2)'}`,
+                  transition: 'all 0.2s ease',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={individualDepts.has(d.id)}
+                    onChange={(e) => {
+                      const ns = new Set(individualDepts);
+                      if (e.target.checked) ns.add(d.id); else ns.delete(d.id);
+                      setIndividualDepts(ns);
+                    }}
+                    style={{ accentColor: '#a855f7', width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '13px', color: individualDepts.has(d.id) ? '#e2e8f0' : '#94a3b8' }}>{d.name}</span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <label className="form-label" style={{ marginBottom: '4px', display: 'block' }}>Year</label>
+                <select className="select-field" value={year} onChange={(e) => setYear(parseInt(e.target.value))} style={{ minWidth: '100px' }}>
+                  {[2024, 2025, 2026, 2027].map((y) => (<option key={y} value={y}>{y}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label" style={{ marginBottom: '4px', display: 'block' }}>Month</label>
+                <select className="select-field" value={month} onChange={(e) => setMonth(parseInt(e.target.value))} style={{ minWidth: '140px' }}>
+                  {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
+                </select>
+              </div>
+              <button
+                className="btn-primary"
+                onClick={fetchIndividualReport}
+                disabled={individualLoading || individualDepts.size === 0}
+                style={{
+                  padding: '9px 24px',
+                  background: individualDepts.size === 0 ? '#475569' : 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                  borderColor: '#a855f7',
+                  opacity: individualDepts.size === 0 ? 0.5 : 1,
+                }}
+              >
+                {individualLoading ? 'Loading...' : 'Generate Report'}
+              </button>
+            </div>
+          </div>
+
+          {/* Results */}
+          {individualLoading ? (
+            <div className="empty-state"><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          ) : !individualReport || individualReport.staff.length === 0 ? (
+            <div className="glass-card empty-state">
+              <FileText size={48} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#a855f7' }} />
+              <p style={{ fontSize: '16px', fontWeight: 500 }}>No individual report data</p>
+              <p style={{ fontSize: '14px', marginTop: '8px', color: '#64748b' }}>
+                Select departments and click &quot;Generate Report&quot; to view staff-wise totals
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                <div className="stat-card">
+                  <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Grand Total</p>
+                  <p style={{ fontSize: '24px', fontWeight: 800, color: '#c084fc', marginTop: '6px' }}>₹{individualReport.grand_total.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="stat-card">
+                  <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Staff Members</p>
+                  <p style={{ fontSize: '24px', fontWeight: 800, color: '#60a5fa', marginTop: '6px' }}>{individualReport.staff_count}</p>
+                </div>
+                <div className="stat-card">
+                  <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Departments</p>
+                  <p style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', marginTop: '6px' }}>{individualReport.department_ids.length}</p>
+                </div>
+              </div>
+
+              {/* Export Buttons */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => handleIndividualExport('pdf')}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.08))',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px', color: '#f87171', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s ease',
+                  }}
+                >
+                  <FileText size={14} /> Export PDF
+                </button>
+                <button
+                  onClick={() => handleIndividualExport('excel')}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08))',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '10px', color: '#34d399', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s ease',
+                  }}
+                >
+                  <FileSpreadsheet size={14} /> Export Excel
+                </button>
+              </div>
+
+              {/* Staff Table with Department Breakdown */}
+              <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div className="table-container" style={{ overflowX: 'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '50px', textAlign: 'center' }}>IND No.</th>
+                        <th style={{ width: '180px' }}>Staff Name</th>
+                        <th style={{ width: '120px' }}>Role</th>
+                        {individualReport.department_ids.map(dId => (
+                          <th key={dId} style={{ textAlign: 'right', minWidth: '120px' }}>
+                            {individualReport.department_names[dId] || dId}
+                          </th>
+                        ))}
+                        <th style={{ textAlign: 'right', width: '130px' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {individualReport.staff.map((s) => (
+                        <tr key={s.staff_id}>
+                          <td style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', fontWeight: 500 }}>{s.staff_code || '-'}</td>
+                          <td><span style={{ fontWeight: 600, fontSize: '13px' }}>{s.staff_name}</span></td>
+                          <td><span className="badge badge-info" style={{ fontSize: '10px' }}>{s.role}</span></td>
+                          {individualReport.department_ids.map(dId => {
+                            const amt = s.dept_totals[dId] || 0;
+                            return (
+                              <td key={dId} style={{ textAlign: 'right', fontSize: '13px', color: amt > 0 ? '#cbd5e1' : '#475569' }}>
+                                {amt > 0 ? `₹${amt.toLocaleString('en-IN')}` : '-'}
+                              </td>
+                            );
+                          })}
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: '#c084fc', fontSize: '14px' }}>
+                            ₹{s.grand_total.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Totals Row */}
+                      <tr style={{ background: 'rgba(168, 85, 247, 0.08)', borderTop: '2px solid rgba(168, 85, 247, 0.3)' }}>
+                        <td></td>
+                        <td style={{ fontWeight: 800, fontSize: '13px', color: '#e2e8f0' }}>TOTAL</td>
+                        <td></td>
+                        {individualReport.department_ids.map(dId => {
+                          const dt = individualReport.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
+                          return (
+                            <td key={dId} style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#34d399' }}>
+                              ₹{Math.round(dt).toLocaleString('en-IN')}
+                            </td>
+                          );
+                        })}
+                        <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '15px', color: '#c084fc' }}>
+                          ₹{individualReport.grand_total.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 

@@ -7,6 +7,27 @@ import type { Department } from '@/lib/types';
 import { MONTHS } from '@/lib/types';
 import { exportExcel, exportPDF, exportCombinedPDF, exportIndividualPDF, exportIndividualExcel, type ReportExportData, type ReportType, type IndividualReportData } from '@/lib/reportExport';
 
+function getShortDeptName(name: string) {
+  const map: Record<string, string> = {
+    'Dental': 'DNT',
+    'Delivery': 'DEL',
+    'Out Patient Department': 'OPD',
+    'General Surgery': 'SUR',
+    'Eye Operation': 'EYE',
+    'Emergency': 'EMG',
+    'X-Ray': 'XRY',
+    'Ultrasound': 'USG',
+    'Pathology': 'PAT',
+    'Physiotherapy': 'PHY',
+    'Nursery': 'NUR',
+    'Orthopedics': 'ORT',
+    'ECG': 'ECG',
+    'Endoscopy': 'END',
+  };
+  if (map[name]) return map[name];
+  return name.substring(0, 3).toUpperCase();
+}
+
 interface StaffReport {
   staff_id: string;
   staff_name: string;
@@ -736,11 +757,16 @@ export default function ReportsPage() {
                         <th style={{ width: '180px' }}>Staff Name</th>
                         <th style={{ width: '120px' }}>Role</th>
                         {individualReport.department_ids.map(dId => (
-                          <th key={dId} style={{ textAlign: 'right', minWidth: '120px' }}>
-                            {individualReport.department_names[dId] || dId}
+                          <th key={dId} style={{ textAlign: 'right', minWidth: '120px', whiteSpace: 'nowrap' }}>
+                            {getShortDeptName(individualReport.department_names[dId] || dId)}
                           </th>
                         ))}
-                        <th style={{ textAlign: 'right', width: '130px' }}>Total</th>
+                        <th style={{ textAlign: 'right', width: '130px', whiteSpace: 'nowrap' }}>Total Share</th>
+                        <th style={{ textAlign: 'right', width: '90px', whiteSpace: 'nowrap' }}>CH.AAM</th>
+                        <th style={{ textAlign: 'right', width: '110px', whiteSpace: 'nowrap' }}>MUSI</th>
+                        <th style={{ textAlign: 'right', width: '90px', whiteSpace: 'nowrap' }}>J.SAL</th>
+                        <th style={{ textAlign: 'right', width: '110px', whiteSpace: 'nowrap' }}>INC.TAX</th>
+                        <th style={{ textAlign: 'right', width: '130px', whiteSpace: 'nowrap' }}>Net Amount</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -760,6 +786,21 @@ export default function ReportsPage() {
                           <td style={{ textAlign: 'right', fontWeight: 700, color: '#c084fc', fontSize: '14px' }}>
                             ₹{s.grand_total.toLocaleString('en-IN')}
                           </td>
+                          <td style={{ textAlign: 'right', fontSize: '13px', color: s.taxes.ch > 0 ? '#f87171' : '#475569' }}>
+                            {s.taxes.ch > 0 ? `₹${s.taxes.ch.toLocaleString('en-IN')}` : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '13px', color: s.taxes.aam_musi > 0 ? '#f87171' : '#475569' }}>
+                            {s.taxes.aam_musi > 0 ? `₹${s.taxes.aam_musi.toLocaleString('en-IN')}` : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '13px', color: s.taxes.j_sal > 0 ? '#f87171' : '#475569' }}>
+                            {s.taxes.j_sal > 0 ? `₹${s.taxes.j_sal.toLocaleString('en-IN')}` : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '13px', color: s.taxes.inc_tax > 0 ? '#f87171' : '#475569' }}>
+                            {s.taxes.inc_tax > 0 ? `₹${s.taxes.inc_tax.toLocaleString('en-IN')}` : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#10b981', fontSize: '14px' }}>
+                            ₹{s.net_amount.toLocaleString('en-IN')}
+                          </td>
                         </tr>
                       ))}
                       {/* Totals Row */}
@@ -777,6 +818,21 @@ export default function ReportsPage() {
                         })}
                         <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '15px', color: '#c084fc' }}>
                           ₹{individualReport.grand_total.toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#f87171' }}>
+                          ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.taxes.ch, 0)).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#f87171' }}>
+                          ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.taxes.aam_musi, 0)).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#f87171' }}>
+                          ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.taxes.j_sal, 0)).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#f87171' }}>
+                          ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.taxes.inc_tax, 0)).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '15px', color: '#10b981' }}>
+                          ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.net_amount, 0)).toLocaleString('en-IN')}
                         </td>
                       </tr>
                     </tbody>

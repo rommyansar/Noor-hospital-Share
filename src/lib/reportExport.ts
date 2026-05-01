@@ -110,6 +110,27 @@ function normPct(val: string | number): string {
   return s;
 }
 
+function getShortDeptName(name: string) {
+  const map: Record<string, string> = {
+    'Dental': 'DNT',
+    'Delivery': 'DEL',
+    'Out Patient Department': 'OPD',
+    'General Surgery': 'SUR',
+    'Eye Operation': 'EYE',
+    'Emergency': 'EMG',
+    'X-Ray': 'XRY',
+    'Ultrasound': 'USG',
+    'Pathology': 'PAT',
+    'Physiotherapy': 'PHY',
+    'Nursery': 'NUR',
+    'Orthopedics': 'ORT',
+    'ECG': 'ECG',
+    'Endoscopy': 'END',
+  };
+  if (map[name]) return map[name];
+  return name.substring(0, 3).toUpperCase();
+}
+
 /** Join an array of raw pct values into a clean newline-separated string with % on each. */
 function joinPcts(pcts: (string | number)[]): string {
   const normalized = [...new Set(pcts.map(normPct))].filter(Boolean);
@@ -1004,6 +1025,9 @@ export interface IndividualReportData {
     role: string;
     dept_totals: Record<string, number>;
     grand_total: number;
+    taxes: { ch: number; aam_musi: number; j_sal: number; inc_tax: number };
+    total_tax: number;
+    net_amount: number;
   }[];
 }
 
@@ -1061,9 +1085,14 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   // ── Build table ──
   const headCols = ['IND No.', 'Staff Name'];
   for (const dId of deptIds) {
-    headCols.push(deptNames[dId] || dId);
+    headCols.push(getShortDeptName(deptNames[dId] || dId));
   }
-  headCols.push('Total (Rs.)');
+  headCols.push('Total Share');
+  headCols.push('CH.AAM');
+  headCols.push('MUSI');
+  headCols.push('J.SAL');
+  headCols.push('INC.TAX');
+  headCols.push('Net Amount');
 
   const bodyRows: any[][] = [];
   data.staff.forEach((s) => {
@@ -1073,6 +1102,11 @@ export function exportIndividualPDF(data: IndividualReportData): void {
       row.push(amt > 0 ? formatCurrencyShort(amt) : '-');
     }
     row.push(formatCurrencyShort(s.grand_total));
+    row.push(s.taxes.ch > 0 ? formatCurrencyShort(s.taxes.ch) : '-');
+    row.push(s.taxes.aam_musi > 0 ? formatCurrencyShort(s.taxes.aam_musi) : '-');
+    row.push(s.taxes.j_sal > 0 ? formatCurrencyShort(s.taxes.j_sal) : '-');
+    row.push(s.taxes.inc_tax > 0 ? formatCurrencyShort(s.taxes.inc_tax) : '-');
+    row.push(formatCurrencyShort(s.net_amount));
     bodyRows.push(row);
   });
 
@@ -1083,19 +1117,37 @@ export function exportIndividualPDF(data: IndividualReportData): void {
     totalRow.push({ content: formatCurrencyShort(Math.round(deptTotal * 100) / 100), styles: { fontStyle: 'bold' } });
   }
   totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
+  
+  const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
+  const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
+  const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
+  const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
+  const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
+  
+  totalRow.push({ content: formatCurrencyShort(totalCh), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalAam), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalJSal), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalIncTax), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalNetAll), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
+  
   bodyRows.push(totalRow);
 
-  // Dynamic column styles (no Role column: Sr, Name, dept cols..., Total)
+  // Dynamic column styles
   const colStyles: Record<number, any> = {
     0: { halign: 'center', cellWidth: 10 },
-    1: { halign: 'left', cellWidth: 45 },
+    1: { halign: 'left', cellWidth: 35 },
   };
   const deptColCount = deptIds.length;
-  const totalCols = 2 + deptColCount + 1;
-  for (let i = 2; i < totalCols - 1; i++) {
+  const totalCols = 2 + deptColCount + 6; // SR, Name + Depts + Total, CH, AAM, J.SAL, INC.TAX, Net
+  for (let i = 2; i < totalCols - 6; i++) {
     colStyles[i] = { halign: 'right', overflow: 'visible' as any };
   }
-  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any };
+  colStyles[totalCols - 6] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // Total Share
+  colStyles[totalCols - 5] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // CH.AAM
+  colStyles[totalCols - 4] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // MUSI
+  colStyles[totalCols - 3] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // J.SAL
+  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // INC.TAX
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // Net Amount
 
   autoTable(doc, {
     startY: yPos,
@@ -1192,9 +1244,14 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   // Table header
   const tableHeader = ['Sr. No.', 'Staff Name', 'Role'];
   for (const dId of deptIds) {
-    tableHeader.push(deptNames[dId] || dId);
+    tableHeader.push(getShortDeptName(deptNames[dId] || dId));
   }
-  tableHeader.push('Total (Rs.)');
+  tableHeader.push('Total Share (Rs.)');
+  tableHeader.push('CH.AAM (Rs.)');
+  tableHeader.push('MUSI (Rs.)');
+  tableHeader.push('J.SAL (Rs.)');
+  tableHeader.push('INC.TAX (Rs.)');
+  tableHeader.push('Net Amount (Rs.)');
 
   // Table rows
   const tableRows: (string | number)[][] = [];
@@ -1205,6 +1262,11 @@ export function exportIndividualExcel(data: IndividualReportData): void {
       row.push(amt > 0 ? Math.round(amt * 100) / 100 : 0);
     }
     row.push(Math.round(s.grand_total * 100) / 100);
+    row.push(Math.round(s.taxes.ch * 100) / 100);
+    row.push(Math.round(s.taxes.aam_musi * 100) / 100);
+    row.push(Math.round(s.taxes.j_sal * 100) / 100);
+    row.push(Math.round(s.taxes.inc_tax * 100) / 100);
+    row.push(Math.round(s.net_amount * 100) / 100);
     tableRows.push(row);
   });
 
@@ -1215,6 +1277,18 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     totalRow.push(Math.round(deptTotal * 100) / 100);
   }
   totalRow.push(Math.round(data.grand_total * 100) / 100);
+  const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
+  const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
+  const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
+  const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
+  const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
+  
+  totalRow.push(Math.round(totalCh * 100) / 100);
+  totalRow.push(Math.round(totalAam * 100) / 100);
+  totalRow.push(Math.round(totalJSal * 100) / 100);
+  totalRow.push(Math.round(totalIncTax * 100) / 100);
+  totalRow.push(Math.round(totalNetAll * 100) / 100);
+  
   tableRows.push(totalRow);
 
   const sheetData = [
@@ -1232,13 +1306,18 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     { wch: 18 },  // Role
   ];
   for (let i = 0; i < deptIds.length; i++) {
-    cols.push({ wch: 20 });
+    cols.push({ wch: 15 });
   }
-  cols.push({ wch: 18 }); // Total
+  cols.push({ wch: 15 }); // Total Share
+  cols.push({ wch: 12 }); // CH.AAM
+  cols.push({ wch: 15 }); // MUSI
+  cols.push({ wch: 12 }); // JSAL
+  cols.push({ wch: 12 }); // INC.TAX
+  cols.push({ wch: 18 }); // Net
   ws['!cols'] = cols;
 
   // Merge header rows
-  const totalCols = 3 + deptIds.length + 1;
+  const totalCols = 3 + deptIds.length + 6;
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } },

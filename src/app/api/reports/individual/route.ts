@@ -113,13 +113,24 @@ export async function GET(req: Request) {
   // Convert to array and sort by grand total descending
   const staffList = Object.values(staffMap)
     .map(s => {
-      const taxes = taxMap[s.staff_code || ''] || { ch: 0, aam_musi: 0, j_sal: 0, inc_tax: 0 };
-      const ch = taxes.ch || 0;
-      const aam_musi = taxes.aam_musi || 0;
-      const j_sal = taxes.j_sal || 0;
-      const inc_tax = taxes.inc_tax || 0;
-      const total_tax = ch + aam_musi + j_sal + inc_tax;
       const grand_total = Math.round(s.grand_total * 100) / 100;
+      const taxes = taxMap[s.staff_code || ''] || { inc_tax: 0, enabled: true };
+      
+      let ch = 0;
+      let aam_musi = 0;
+      let j_sal = 0;
+      let inc_tax = 0;
+
+      if (taxes.enabled !== false) {
+        // Calculate dynamically based on grand_total
+        ch = Number((grand_total / 16).toFixed(2));
+        aam_musi = Number((grand_total / 10).toFixed(2));
+        j_sal = Number((grand_total / 120).toFixed(2));
+        
+        inc_tax = taxes.inc_tax || 0;
+      }
+
+      const total_tax = ch + aam_musi + j_sal + inc_tax;
       const net_amount = Math.round((grand_total - total_tax) * 100) / 100;
 
       return {

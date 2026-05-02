@@ -11,6 +11,8 @@ interface TaxRecord {
   aam_musi: number;
   j_sal: number;
   inc_tax: number;
+  total_share: number;
+  enabled: boolean;
 }
 
 interface StaffData {
@@ -65,8 +67,17 @@ export default function TaxEntryPage() {
           ch: 0,
           aam_musi: 0,
           j_sal: 0,
-          inc_tax: 0
+          inc_tax: 0,
+          total_share: 0,
+          enabled: true
         };
+        // Ensure legacy records have the new fields
+        if (initialTaxes[s.staff_code].enabled === undefined) {
+          initialTaxes[s.staff_code].enabled = true;
+        }
+        if (initialTaxes[s.staff_code].total_share === undefined) {
+          initialTaxes[s.staff_code].total_share = 0;
+        }
       });
 
       setTaxes(initialTaxes);
@@ -98,8 +109,11 @@ export default function TaxEntryPage() {
     setSaving(false);
   };
 
-  const updateTax = (ind: string, field: keyof TaxRecord, value: string) => {
-    const num = parseInt(value) || 0;
+  const updateTax = (ind: string, field: keyof TaxRecord, value: any) => {
+    let num: any = value;
+    if (field !== 'enabled') {
+      num = parseFloat(value) || 0;
+    }
     setTaxes(prev => ({
       ...prev,
       [ind]: {
@@ -124,14 +138,16 @@ export default function TaxEntryPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">Manage fixed monthly tax deductions for staff.</p>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Save size={18} />
-          {saving ? 'Saving...' : 'Save Taxes'}
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Save size={18} />
+            {saving ? 'Saving...' : 'Save Taxes'}
+          </button>
+        </div>
       </div>
 
       <div className="glass-card p-4">
@@ -156,18 +172,15 @@ export default function TaxEntryPage() {
               <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr>
                   <th style={{ width: '80px', textAlign: 'center' }}>IND No.</th>
-                  <th style={{ width: '220px' }}>Staff Name</th>
-                  <th style={{ textAlign: 'center' }}>CH.AAM</th>
-                  <th style={{ textAlign: 'center' }}>MUSI</th>
-                  <th style={{ textAlign: 'center' }}>J.SAL</th>
-                  <th style={{ textAlign: 'center' }}>INC.TAX</th>
-                  <th style={{ textAlign: 'right', width: '120px' }}>Total Tax</th>
+                  <th style={{ width: '180px' }}>Staff Name</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>Tax On/Off</th>
+                  <th style={{ textAlign: 'center', width: '150px' }}>INC.TAX</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredStaff.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center text-slate-400 py-8">
+                    <td colSpan={4} className="text-center text-slate-400 py-8">
                       No staff found matching your search.
                     </td>
                   </tr>
@@ -175,10 +188,10 @@ export default function TaxEntryPage() {
                   filteredStaff.map((s) => {
                     const t = taxes[s.staff_code];
                     if (!t) return null;
-                    const total = t.ch + t.aam_musi + t.j_sal + t.inc_tax;
+
                     
                     return (
-                      <tr key={s.id}>
+                      <tr key={s.id} style={{ opacity: t.enabled ? 1 : 0.6 }}>
                         <td style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', fontWeight: 500 }}>
                           {s.staff_code}
                         </td>
@@ -186,43 +199,24 @@ export default function TaxEntryPage() {
                           <span style={{ fontWeight: 600, fontSize: '14px', color: '#f8fafc' }}>{s.name}</span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number"
-                            className="input-field"
-                            style={{ width: '90px', padding: '6px 8px', textAlign: 'right' }}
-                            value={t.ch === 0 ? '' : t.ch}
-                            onChange={(e) => updateTax(s.staff_code, 'ch', e.target.value)}
-                          />
+                          <div
+                            className={`toggle-switch ${t.enabled ? 'active' : 'inactive'}`}
+                            onClick={() => updateTax(s.staff_code, 'enabled', !t.enabled)}
+                            style={{ margin: '0 auto', transform: 'scale(0.8)' }}
+                          >
+                            <div className="toggle-knob" />
+                          </div>
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number"
                             className="input-field"
-                            style={{ width: '90px', padding: '6px 8px', textAlign: 'right' }}
-                            value={t.aam_musi === 0 ? '' : t.aam_musi}
-                            onChange={(e) => updateTax(s.staff_code, 'aam_musi', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number"
-                            className="input-field"
-                            style={{ width: '90px', padding: '6px 8px', textAlign: 'right' }}
-                            value={t.j_sal === 0 ? '' : t.j_sal}
-                            onChange={(e) => updateTax(s.staff_code, 'j_sal', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <input
-                            type="number"
-                            className="input-field"
-                            style={{ width: '90px', padding: '6px 8px', textAlign: 'right' }}
+                            style={{ width: '120px', padding: '6px 8px', textAlign: 'right', borderColor: '#f43f5e', margin: '0 auto' }}
                             value={t.inc_tax === 0 ? '' : t.inc_tax}
                             onChange={(e) => updateTax(s.staff_code, 'inc_tax', e.target.value)}
+                            disabled={!t.enabled}
+                            placeholder="Amount"
                           />
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: total > 0 ? '#f87171' : '#475569', fontSize: '15px' }}>
-                          {total > 0 ? `₹${total.toLocaleString('en-IN')}` : '-'}
                         </td>
                       </tr>
                     );

@@ -1,467 +1,13 @@
 [
   {
-    "ind": "2481",
-    "name": "DR.TAREQUE",
-    "ch": 0,
-    "aam_musi": 2085,
-    "j_sal": 217,
-    "inc_tax": 5212
-  },
-  {
-    "ind": "103048",
-    "name": "DR.MAHMOOD BUTT",
-    "ch": 0,
-    "aam_musi": 523,
-    "j_sal": 48,
-    "inc_tax": 614
-  },
-  {
-    "ind": "103047",
-    "name": "DR.MANJU BUTT",
-    "ch": 0,
-    "aam_musi": 908,
-    "j_sal": 84,
-    "inc_tax": 1065
-  },
-  {
-    "ind": "1202",
-    "name": "DR.A.H.IMRAN",
-    "ch": 0,
-    "aam_musi": 2190,
-    "j_sal": 203,
-    "inc_tax": 2569
-  },
-  {
-    "ind": "11633",
-    "name": "DR. ABDUL HAFEEZ",
-    "ch": 0,
-    "aam_musi": 1100,
-    "j_sal": 102,
-    "inc_tax": 1289
-  },
-  {
-    "ind": "2666",
-    "name": "DR. MARYAM",
-    "ch": 0,
-    "aam_musi": 928,
-    "j_sal": 86,
-    "inc_tax": 1088
-  },
-  {
-    "ind": "47781",
-    "name": "DR.AMATUL HAI",
-    "ch": 0,
-    "aam_musi": 1499,
-    "j_sal": 139,
-    "inc_tax": 1758
-  },
-  {
-    "ind": "2893",
-    "name": "DR.ABDUL  MAJID",
-    "ch": 0,
-    "aam_musi": 171,
-    "j_sal": 14,
-    "inc_tax": 0
-  },
-  {
-    "ind": "6422",
-    "name": "TAUFIQ AHMAD",
-    "ch": 0,
-    "aam_musi": 198,
-    "j_sal": 16,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1179",
-    "name": "MOHAMMAD SHUJAUDDIN",
-    "ch": 0,
-    "aam_musi": 208,
-    "j_sal": 17,
-    "inc_tax": 0
-  },
-  {
-    "ind": "9816",
-    "name": "MAHMOOD MUZAMMIL",
-    "ch": 136,
-    "aam_musi": 0,
-    "j_sal": 18,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1064",
-    "name": "A.REHMAN",
-    "ch": 0,
-    "aam_musi": 85,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
     "ind": "88",
     "name": "S.MAHMOOD",
     "ch": 0,
     "aam_musi": 198,
     "j_sal": 16,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2741",
-    "name": "A.MOHSIN",
-    "ch": 0,
-    "aam_musi": 254,
-    "j_sal": 21,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1110",
-    "name": "TAHIRA SABA",
-    "ch": 0,
-    "aam_musi": 183,
-    "j_sal": 15,
-    "inc_tax": 0
-  },
-  {
-    "ind": "26256",
-    "name": "KHADEEJA",
-    "ch": 0,
-    "aam_musi": 113,
-    "j_sal": 9,
-    "inc_tax": 0
-  },
-  {
-    "ind": "63252",
-    "name": "HAMDA",
-    "ch": 0,
-    "aam_musi": 117,
-    "j_sal": 9,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2436",
-    "name": "SUMAIDA",
-    "ch": 61,
-    "aam_musi": 0,
-    "j_sal": 8,
-    "inc_tax": 0
-  },
-  {
-    "ind": "41065",
-    "name": "ROFIZA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1982",
-    "name": "FAUZIA",
-    "ch": 0,
-    "aam_musi": 88,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "37997",
-    "name": "NEHA",
-    "ch": 0,
-    "aam_musi": 11,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "32418",
-    "name": "NIYAMATUN YASMEEN",
-    "ch": 68,
-    "aam_musi": 0,
-    "j_sal": 9,
-    "inc_tax": 0
-  },
-  {
-    "ind": "10215",
-    "name": "SAMEENA MUNAWWAR",
-    "ch": 0,
-    "aam_musi": 93,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "341",
-    "name": "MUBARAK",
-    "ch": 0,
-    "aam_musi": 87,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2800",
-    "name": "SK. AINUL",
-    "ch": 0,
-    "aam_musi": 42,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2970",
-    "name": "AZHARUDDIN",
-    "ch": 48,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1104",
-    "name": "ABDUL HADI",
-    "ch": 0,
-    "aam_musi": 225,
-    "j_sal": 18,
-    "inc_tax": 0
-  },
-  {
-    "ind": "6486",
-    "name": "SK. SUALEH",
-    "ch": 0,
-    "aam_musi": 208,
-    "j_sal": 17,
-    "inc_tax": 0
-  },
-  {
-    "ind": "7563",
-    "name": "MOHAMMAD ABDUL BARI",
-    "ch": 0,
-    "aam_musi": 202,
-    "j_sal": 16,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1468",
-    "name": "TAHIRA MAHMOOD",
-    "ch": 0,
-    "aam_musi": 77,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2799",
-    "name": "MERAJ TABASSUM",
-    "ch": 0,
-    "aam_musi": 94,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "5635",
-    "name": "FAIZ AHMAD",
-    "ch": 0,
-    "aam_musi": 152,
-    "j_sal": 12,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1526",
-    "name": "PARVEZ AHMAD",
-    "ch": 76,
-    "aam_musi": 0,
-    "j_sal": 10,
-    "inc_tax": 0
-  },
-  {
-    "ind": "9014",
-    "name": "TAJAMMUL",
-    "ch": 58,
-    "aam_musi": 0,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "7564",
-    "name": "A.ALEEM",
-    "ch": 18,
-    "aam_musi": 0,
-    "j_sal": 2,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1889",
-    "name": "MANSOOR KHAN",
-    "ch": 0,
-    "aam_musi": 76,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2583",
-    "name": "AAMIR AHMAD TAHIR",
-    "ch": 51,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "58024",
-    "name": "MUKHTAR KHAN",
-    "ch": 5,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1362",
-    "name": "MAHBOOB",
-    "ch": 48,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "645",
-    "name": "TAHIR AHMAD MUMTAZ",
-    "ch": 0,
-    "aam_musi": 17,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2167",
-    "name": "MOHAMMAD LATEEF",
-    "ch": 5,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "35289",
-    "name": "JAHANGIR KHAN",
-    "ch": 9,
-    "aam_musi": 0,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "6404",
-    "name": "IMRAN ARIF",
-    "ch": 10,
-    "aam_musi": 0,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "5632",
-    "name": "IRFAN AHMAD",
-    "ch": 0,
-    "aam_musi": 14,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2043",
-    "name": "TAHIR AHMAD KHAN",
-    "ch": 7,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "15551",
-    "name": "WAHID AHMAD",
-    "ch": 10,
-    "aam_musi": 0,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "503",
-    "name": "RUBY KUMARI",
-    "ch": 43,
-    "aam_musi": 0,
-    "j_sal": 5,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1609",
-    "name": "MOHAMMAD AFZAL",
-    "ch": 53,
-    "aam_musi": 0,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "70516",
-    "name": "MONIKA",
-    "ch": 56,
-    "aam_musi": 0,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "5660",
-    "name": "DANISH",
-    "ch": 56,
-    "aam_musi": 0,
-    "j_sal": 7,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2802",
-    "name": "MOFITUNNISA",
-    "ch": 0,
-    "aam_musi": 10,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-102",
-    "name": "POOJA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-103",
-    "name": "DAVINDER KAUR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-104",
-    "name": "JASBIR KAUR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-105",
-    "name": "AMARJEET KAUR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-106",
-    "name": "PARAMJEET KAUR .RIAR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-108",
-    "name": "SULAKHNI",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "613",
-    "name": "NAZMA KHATOON",
-    "ch": 0,
-    "aam_musi": 255,
-    "j_sal": 21,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
     "ind": "120",
@@ -469,255 +15,9 @@
     "ch": 115,
     "aam_musi": 0,
     "j_sal": 15,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-110",
-    "name": "SANDEEPA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-111",
-    "name": "RUPINDER KAUR RIAR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-112",
-    "name": "BALJIT",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-113",
-    "name": "MANJIT",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-115",
-    "name": "SARABJIT KAUR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-116",
-    "name": "SUKHWINDER R",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-117",
-    "name": "AARADHNA BULBUL HAQ",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "466",
-    "name": "RUBEENA KAUSAR",
-    "ch": 26,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "3216",
-    "name": "MUNAWWARA",
-    "ch": 28,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "6770",
-    "name": "RASHDA NAZLI",
-    "ch": 0,
-    "aam_musi": 38,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-250",
-    "name": "RAJKUMARI",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "40586",
-    "name": "SALMA FAREED NAILA",
-    "ch": 14,
-    "aam_musi": 0,
-    "j_sal": 1,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-154",
-    "name": "SWEETY",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-120",
-    "name": "GURWINDER",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-128",
-    "name": "HAPRPRT HAPPY",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-135",
-    "name": "HEENA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1111",
-    "name": "ASFA BEGUM",
-    "ch": 46,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-140",
-    "name": "REEMA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-142",
-    "name": "MANJINDER",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-144",
-    "name": "AMANPREET",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-147",
-    "name": "RAJWANT",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-148",
-    "name": "RAJWINDER TATLE",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "77198",
-    "name": "SERINA",
-    "ch": 47,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-153",
-    "name": "MANJIT RIAR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-151",
-    "name": "LAKSHMI JUMBA",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "9568",
-    "name": "RUBINA KOSER",
-    "ch": 27,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "3967",
-    "name": "SHAZIA",
-    "ch": 60,
-    "aam_musi": 0,
-    "j_sal": 8,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-252",
-    "name": "POOJA MASIH",
-    "ch": 25,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "12345",
-    "name": "AMTUS SABOOR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "12337",
-    "name": "AMTUSH SHAKOOR",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "T-136",
-    "name": "PARAMJIT PAWAN",
-    "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
     "ind": "332",
@@ -725,47 +25,19 @@
     "ch": 0,
     "aam_musi": 62,
     "j_sal": 5,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "3920",
-    "name": "SARAH NAAZ",
-    "ch": 25,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "47768",
-    "name": "SHABNAM",
-    "ch": 24,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2980",
-    "name": "BUSHRA",
-    "ch": 25,
-    "aam_musi": 0,
-    "j_sal": 3,
-    "inc_tax": 0
-  },
-  {
-    "ind": "2975",
-    "name": "DAROODAN",
+    "ind": "341",
+    "name": "MUBARAK",
     "ch": 0,
-    "aam_musi": 80,
-    "j_sal": 6,
-    "inc_tax": 0
-  },
-  {
-    "ind": "1952",
-    "name": "QURAISHA",
-    "ch": 0,
-    "aam_musi": 86,
+    "aam_musi": 87,
     "j_sal": 7,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
     "ind": "465",
@@ -773,39 +45,319 @@
     "ch": 50,
     "aam_musi": 0,
     "j_sal": 6,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-122",
-    "name": "REKHA",
-    "ch": 0,
+    "ind": "466",
+    "name": "RUBEENA KAUSAR",
+    "ch": 26,
     "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-123",
-    "name": "PAWAN PAMMI",
-    "ch": 0,
+    "ind": "503",
+    "name": "RUBY KUMARI",
+    "ch": 43,
     "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
+    "j_sal": 5,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-124",
-    "name": "SUNNY",
+    "ind": "613",
+    "name": "NAZMA KHATOON",
     "ch": 0,
-    "aam_musi": 0,
-    "j_sal": 0,
-    "inc_tax": 0
+    "aam_musi": 255,
+    "j_sal": 21,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-125",
-    "name": "RISHI",
+    "ind": "645",
+    "name": "TAHIR AHMAD MUMTAZ",
     "ch": 0,
+    "aam_musi": 17,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1064",
+    "name": "A.REHMAN",
+    "ch": 0,
+    "aam_musi": 85,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1104",
+    "name": "ABDUL HADI",
+    "ch": 0,
+    "aam_musi": 225,
+    "j_sal": 18,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1110",
+    "name": "TAHIRA SABA",
+    "ch": 0,
+    "aam_musi": 183,
+    "j_sal": 15,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1111",
+    "name": "ASFA BEGUM",
+    "ch": 46,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1179",
+    "name": "MOHAMMAD SHUJAUDDIN",
+    "ch": 0,
+    "aam_musi": 208,
+    "j_sal": 17,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1202",
+    "name": "DR.A.H.IMRAN",
+    "ch": 0,
+    "aam_musi": 2190,
+    "j_sal": 203,
+    "inc_tax": 2569,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1362",
+    "name": "MAHBOOB",
+    "ch": 48,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1468",
+    "name": "TAHIRA MAHMOOD",
+    "ch": 0,
+    "aam_musi": 77,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1526",
+    "name": "PARVEZ AHMAD",
+    "ch": 76,
+    "aam_musi": 0,
+    "j_sal": 10,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1609",
+    "name": "MOHAMMAD AFZAL",
+    "ch": 53,
+    "aam_musi": 0,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1889",
+    "name": "MANSOOR KHAN",
+    "ch": 0,
+    "aam_musi": 76,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1952",
+    "name": "QURAISHA",
+    "ch": 0,
+    "aam_musi": 86,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "1982",
+    "name": "FAUZIA",
+    "ch": 0,
+    "aam_musi": 88,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2043",
+    "name": "TAHIR AHMAD KHAN",
+    "ch": 7,
     "aam_musi": 0,
     "j_sal": 0,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2167",
+    "name": "MOHAMMAD LATEEF",
+    "ch": 5,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2436",
+    "name": "SUMAIDA",
+    "ch": 61,
+    "aam_musi": 0,
+    "j_sal": 8,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2481",
+    "name": "DR.TAREQUE",
+    "ch": 0,
+    "aam_musi": 2085,
+    "j_sal": 217,
+    "inc_tax": 5212,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2583",
+    "name": "AAMIR AHMAD TAHIR",
+    "ch": 51,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2666",
+    "name": "DR. MARYAM",
+    "ch": 0,
+    "aam_musi": 928,
+    "j_sal": 86,
+    "inc_tax": 1088,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2741",
+    "name": "A.MOHSIN",
+    "ch": 0,
+    "aam_musi": 254,
+    "j_sal": 21,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2799",
+    "name": "MERAJ TABASSUM",
+    "ch": 0,
+    "aam_musi": 94,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2800",
+    "name": "SK. AINUL",
+    "ch": 0,
+    "aam_musi": 42,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2802",
+    "name": "MOFITUNNISA",
+    "ch": 0,
+    "aam_musi": 10,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2970",
+    "name": "AZHARUDDIN",
+    "ch": 48,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "2975",
+    "name": "DAROODAN",
+    "ch": 0,
+    "aam_musi": 80,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "3216",
+    "name": "MUNAWWARA",
+    "ch": 28,
+    "aam_musi": 0,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "3920",
+    "name": "SARAH NAAZ",
+    "ch": 25,
+    "aam_musi": 0,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
     "ind": "3957",
@@ -813,31 +365,179 @@
     "ch": 33,
     "aam_musi": 0,
     "j_sal": 4,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-131",
-    "name": "RAKESH",
+    "ind": "3967",
+    "name": "SHAZIA",
+    "ch": 60,
+    "aam_musi": 0,
+    "j_sal": 8,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "5632",
+    "name": "IRFAN AHMAD",
+    "ch": 0,
+    "aam_musi": 14,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "5635",
+    "name": "FAIZ AHMAD",
+    "ch": 0,
+    "aam_musi": 152,
+    "j_sal": 12,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "5660",
+    "name": "DANISH",
+    "ch": 56,
+    "aam_musi": 0,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "6404",
+    "name": "IMRAN ARIF",
+    "ch": 10,
+    "aam_musi": 0,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "6422",
+    "name": "TAUFIQ AHMAD",
+    "ch": 0,
+    "aam_musi": 198,
+    "j_sal": 16,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "6486",
+    "name": "SK. SUALEH",
+    "ch": 0,
+    "aam_musi": 208,
+    "j_sal": 17,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "6770",
+    "name": "RASHDA NAZLI",
+    "ch": 0,
+    "aam_musi": 38,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "7563",
+    "name": "MOHAMMAD ABDUL BARI",
+    "ch": 0,
+    "aam_musi": 202,
+    "j_sal": 16,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "7564",
+    "name": "A.ALEEM",
+    "ch": 18,
+    "aam_musi": 0,
+    "j_sal": 2,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "9014",
+    "name": "TAJAMMUL",
+    "ch": 58,
+    "aam_musi": 0,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "9568",
+    "name": "RUBINA KOSER",
+    "ch": 27,
+    "aam_musi": 0,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "9816",
+    "name": "MAHMOOD MUZAMMIL",
+    "ch": 136,
+    "aam_musi": 0,
+    "j_sal": 18,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "10215",
+    "name": "SAMEENA MUNAWWAR",
+    "ch": 0,
+    "aam_musi": 93,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "11633",
+    "name": "DR. ABDUL HAFEEZ",
+    "ch": 0,
+    "aam_musi": 1100,
+    "j_sal": 102,
+    "inc_tax": 1289,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "12337",
+    "name": "AMTUSH SHAKOOR",
     "ch": 0,
     "aam_musi": 0,
     "j_sal": 0,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
-    "ind": "T-132",
-    "name": "SHASHI",
+    "ind": "12345",
+    "name": "AMTUS SABOOR",
     "ch": 0,
     "aam_musi": 0,
     "j_sal": 0,
-    "inc_tax": 0
-  },
-  {
-    "ind": "40884",
-    "name": "SAJID ALI",
-    "ch": 51,
-    "aam_musi": 0,
-    "j_sal": 6,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
   },
   {
     "ind": "14182",
@@ -845,7 +545,430 @@
     "ch": 42,
     "aam_musi": 0,
     "j_sal": 5,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "15551",
+    "name": "WAHID AHMAD",
+    "ch": 10,
+    "aam_musi": 0,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "18469",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "26256",
+    "name": "KHADEEJA",
+    "ch": 0,
+    "aam_musi": 113,
+    "j_sal": 9,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "32418",
+    "name": "NIYAMATUN YASMEEN",
+    "ch": 68,
+    "aam_musi": 0,
+    "j_sal": 9,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "35289",
+    "name": "JAHANGIR KHAN",
+    "ch": 9,
+    "aam_musi": 0,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "37997",
+    "name": "NEHA",
+    "ch": 0,
+    "aam_musi": 11,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "40586",
+    "name": "SALMA FAREED NAILA",
+    "ch": 14,
+    "aam_musi": 0,
+    "j_sal": 1,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "40884",
+    "name": "SAJID ALI",
+    "ch": 51,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "41065",
+    "name": "ROFIZA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "47768",
+    "name": "SHABNAM",
+    "ch": 24,
+    "aam_musi": 0,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "47781",
+    "name": "DR.AMATUL HAI",
+    "ch": 0,
+    "aam_musi": 1499,
+    "j_sal": 139,
+    "inc_tax": 1758,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "58024",
+    "name": "MUKHTAR KHAN",
+    "ch": 5,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "63252",
+    "name": "HAMDA",
+    "ch": 0,
+    "aam_musi": 117,
+    "j_sal": 9,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "70516",
+    "name": "MONIKA",
+    "ch": 56,
+    "aam_musi": 0,
+    "j_sal": 7,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "77198",
+    "name": "SERINA",
+    "ch": 47,
+    "aam_musi": 0,
+    "j_sal": 6,
+    "inc_tax": 0,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "103047",
+    "name": "DR.MANJU BUTT",
+    "ch": 0,
+    "aam_musi": 908,
+    "j_sal": 84,
+    "inc_tax": 1065,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "103048",
+    "name": "DR.MAHMOOD BUTT",
+    "ch": 0,
+    "aam_musi": 523,
+    "j_sal": 48,
+    "inc_tax": 614,
+    "enabled": true,
+    "total_share": 0
+  },
+  {
+    "ind": "000",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "HLP-1009",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": false
+  },
+  {
+    "ind": "LAB",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "OTH-1000",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": false
+  },
+  {
+    "ind": "OTH-1002",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": false
+  },
+  {
+    "ind": "PHA-1006",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "PHA-1009",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "SEC-1000",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "total_share": 0,
+    "enabled": true
+  },
+  {
+    "ind": "T-102",
+    "name": "POOJA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-103",
+    "name": "DAVINDER KAUR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-104",
+    "name": "JASBIR KAUR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-105",
+    "name": "AMARJEET KAUR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-106",
+    "name": "PARAMJEET KAUR .RIAR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-108",
+    "name": "SULAKHNI",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-110",
+    "name": "SANDEEPA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-111",
+    "name": "RUPINDER KAUR RIAR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-112",
+    "name": "BALJIT",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-113",
+    "name": "MANJIT",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-115",
+    "name": "SARABJIT KAUR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-116",
+    "name": "SUKHWINDER R",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-117",
+    "name": "AARADHNA BULBUL HAQ",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-120",
+    "name": "GURWINDER",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-122",
+    "name": "REKHA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-123",
+    "name": "PAWAN PAMMI",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-124",
+    "name": "SUNNY",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-125",
+    "name": "RISHI",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
   },
   {
     "ind": "T-126",
@@ -853,7 +976,139 @@
     "ch": 0,
     "aam_musi": 0,
     "j_sal": 0,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-128",
+    "name": "HAPRPRT HAPPY",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-131",
+    "name": "RAKESH",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-132",
+    "name": "SHASHI",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-135",
+    "name": "HEENA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-136",
+    "name": "PARAMJIT PAWAN",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-140",
+    "name": "REEMA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-142",
+    "name": "MANJINDER",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-144",
+    "name": "AMANPREET",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-147",
+    "name": "RAJWANT",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-148",
+    "name": "RAJWINDER TATLE",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-151",
+    "name": "LAKSHMI JUMBA",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-153",
+    "name": "MANJIT RIAR",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-154",
+    "name": "SWEETY",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
   },
   {
     "ind": "T-156",
@@ -861,6 +1116,28 @@
     "ch": 0,
     "aam_musi": 0,
     "j_sal": 0,
-    "inc_tax": 0
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-250",
+    "name": "RAJKUMARI",
+    "ch": 0,
+    "aam_musi": 0,
+    "j_sal": 0,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
+  },
+  {
+    "ind": "T-252",
+    "name": "POOJA MASIH",
+    "ch": 25,
+    "aam_musi": 0,
+    "j_sal": 3,
+    "inc_tax": 0,
+    "enabled": false,
+    "total_share": 0
   }
 ]

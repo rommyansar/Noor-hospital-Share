@@ -145,7 +145,7 @@
     "ch": 0,
     "aam_musi": 2190,
     "j_sal": 203,
-    "inc_tax": 2569,
+    "inc_tax": 0.01,
     "enabled": true,
     "total_share": 0
   },
@@ -515,7 +515,7 @@
     "ch": 0,
     "aam_musi": 1100,
     "j_sal": 102,
-    "inc_tax": 1289,
+    "inc_tax": 0,
     "enabled": true,
     "total_share": 0
   },
@@ -654,7 +654,7 @@
     "ch": 0,
     "aam_musi": 1499,
     "j_sal": 139,
-    "inc_tax": 1758,
+    "inc_tax": 0,
     "enabled": true,
     "total_share": 0
   },
@@ -704,7 +704,7 @@
     "ch": 0,
     "aam_musi": 908,
     "j_sal": 84,
-    "inc_tax": 1065,
+    "inc_tax": 0,
     "enabled": true,
     "total_share": 0
   },
@@ -714,7 +714,7 @@
     "ch": 0,
     "aam_musi": 523,
     "j_sal": 48,
-    "inc_tax": 614,
+    "inc_tax": 0,
     "enabled": true,
     "total_share": 0
   },

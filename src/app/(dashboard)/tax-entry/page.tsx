@@ -112,7 +112,13 @@ export default function TaxEntryPage() {
   const updateTax = (ind: string, field: keyof TaxRecord, value: any) => {
     let num: any = value;
     if (field !== 'enabled') {
-      num = parseFloat(value) || 0;
+      // Allow empty string to reset to 0/default
+      if (value === '') {
+        num = 0;
+      } else {
+        num = parseFloat(value);
+        if (isNaN(num)) num = 0;
+      }
     }
     setTaxes(prev => ({
       ...prev,
@@ -136,7 +142,7 @@ export default function TaxEntryPage() {
             <Calculator className="text-emerald-400" />
             Tax Entry
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Manage fixed monthly tax deductions for staff.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage fixed monthly tax percentage overrides for staff.</p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -174,7 +180,7 @@ export default function TaxEntryPage() {
                   <th style={{ width: '80px', textAlign: 'center' }}>IND No.</th>
                   <th style={{ width: '180px' }}>Staff Name</th>
                   <th style={{ textAlign: 'center', width: '100px' }}>Tax On/Off</th>
-                  <th style={{ textAlign: 'center', width: '150px' }}>INC.TAX</th>
+                  <th style={{ textAlign: 'center', width: '150px' }}>INC.TAX (%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,7 +195,15 @@ export default function TaxEntryPage() {
                     const t = taxes[s.staff_code];
                     if (!t) return null;
 
-                    
+                    const INC_TAX_DEFAULTS: Record<string, number> = {
+                      '2481': 20.0,
+                      '1202': 10.5,
+                      '47781': 10.5,
+                      '11633': 10.5,
+                      '2666': 10.5,
+                    };
+                    const defaultIncTax = INC_TAX_DEFAULTS[s.staff_code] || 0;
+
                     return (
                       <tr key={s.id} style={{ opacity: t.enabled ? 1 : 0.6 }}>
                         <td style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', fontWeight: 500 }}>
@@ -210,12 +224,13 @@ export default function TaxEntryPage() {
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="number"
+                            step="0.01"
                             className="input-field"
                             style={{ width: '120px', padding: '6px 8px', textAlign: 'right', borderColor: '#f43f5e', margin: '0 auto' }}
                             value={t.inc_tax === 0 ? '' : t.inc_tax}
                             onChange={(e) => updateTax(s.staff_code, 'inc_tax', e.target.value)}
                             disabled={!t.enabled}
-                            placeholder="Amount"
+                            placeholder={`Def: ${defaultIncTax}`}
                           />
                         </td>
                       </tr>

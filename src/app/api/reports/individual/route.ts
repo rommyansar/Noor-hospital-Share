@@ -5,6 +5,21 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
+const MUSI_ELIGIBLE_STAFF_INDS = [
+  '2481', '103048', '103047', '1202', '11633', '2666', '47781', '2893', '6422',
+  '1179', '1064', '88', '2741', '1110', '26256', '63252', '1982', '37997',
+  '10215', '341', '2800', '1104', '6486', '7563', '1468', '2799', '5635',
+  '1889', '645', '5632', '2802', '613', '6770', '332', '2975', '1952', '18469'
+];
+
+const INC_TAX_DEFAULTS: Record<string, number> = {
+  '2481': 20.0,
+  '1202': 10.5,
+  '47781': 10.5,
+  '11633': 10.5,
+  '2666': 10.5,
+};
+
 /**
  * Individual-wise Report API
  * 
@@ -122,12 +137,27 @@ export async function GET(req: Request) {
       let inc_tax = 0;
 
       if (taxes.enabled !== false) {
-        // Calculate dynamically based on grand_total
-        ch = Number((grand_total / 16).toFixed(2));
-        aam_musi = Number((grand_total / 10).toFixed(2));
-        j_sal = Number((grand_total / 120).toFixed(2));
+        const staffCode = (s.staff_code || '').trim();
+
+        // 1. INC.TAX deduction first
+        // INC.TAX is ONLY for doctors listed in INC_TAX_DEFAULTS.
+        // Always use the hardcoded default percentage — legacy values in taxData.json
+        // (flat amounts like 5212, or wrong decimals like 0.01) are completely ignored.
+        const incTaxPercent = INC_TAX_DEFAULTS[staffCode] || 0;
+
+        inc_tax = Number(((grand_total * incTaxPercent) / 100).toFixed(2));
         
-        inc_tax = taxes.inc_tax || 0;
+        const remaining_amount = grand_total - inc_tax;
+
+        // 2. Remaining 3 taxes on the remaining amount
+        if (MUSI_ELIGIBLE_STAFF_INDS.includes(staffCode)) {
+          aam_musi = Number((remaining_amount / 10).toFixed(2));
+        } else {
+          aam_musi = 0;
+        }
+
+        j_sal = Number((remaining_amount / 120).toFixed(2));
+        ch = Number((remaining_amount / 16).toFixed(2));
       }
 
       const total_tax = ch + aam_musi + j_sal + inc_tax;

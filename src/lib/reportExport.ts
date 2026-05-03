@@ -471,7 +471,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
   const doc = new jsPDF({
     orientation: isDetailed ? 'landscape' : 'portrait',
     unit: 'mm',
-    format: isDetailed ? [INDIAN_LEGAL_HEIGHT, INDIAN_LEGAL_WIDTH] : 'a4',
+    format: 'legal',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -847,7 +847,7 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: [215, 356], // Indian Legal portrait
+    format: 'legal',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -1039,7 +1039,7 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
-    format: [215, 356], // Indian Legal landscape
+    format: 'legal',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -1088,10 +1088,10 @@ export function exportIndividualPDF(data: IndividualReportData): void {
     headCols.push(getShortDeptName(deptNames[dId] || dId));
   }
   headCols.push('Total Share');
-  headCols.push('CH.AAM');
+  headCols.push('INC.TAX');
   headCols.push('MUSI');
   headCols.push('J.SAL');
-  headCols.push('INC.TAX');
+  headCols.push('CH.AAM');
   headCols.push('Net Amount');
 
   const bodyRows: any[][] = [];
@@ -1102,10 +1102,10 @@ export function exportIndividualPDF(data: IndividualReportData): void {
       row.push(amt > 0 ? formatCurrencyShort(amt) : '-');
     }
     row.push(formatCurrencyShort(s.grand_total));
-    row.push(s.taxes.ch > 0 ? formatCurrencyShort(s.taxes.ch) : '-');
+    row.push(s.taxes.inc_tax > 0 ? formatCurrencyShort(s.taxes.inc_tax) : '-');
     row.push(s.taxes.aam_musi > 0 ? formatCurrencyShort(s.taxes.aam_musi) : '-');
     row.push(s.taxes.j_sal > 0 ? formatCurrencyShort(s.taxes.j_sal) : '-');
-    row.push(s.taxes.inc_tax > 0 ? formatCurrencyShort(s.taxes.inc_tax) : '-');
+    row.push(s.taxes.ch > 0 ? formatCurrencyShort(s.taxes.ch) : '-');
     row.push(formatCurrencyShort(s.net_amount));
     bodyRows.push(row);
   });
@@ -1118,36 +1118,36 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   }
   totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
   
-  const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
+  const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
   const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
   const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
-  const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
+  const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
   const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
   
-  totalRow.push({ content: formatCurrencyShort(totalCh), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalIncTax), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
   totalRow.push({ content: formatCurrencyShort(totalAam), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
   totalRow.push({ content: formatCurrencyShort(totalJSal), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
-  totalRow.push({ content: formatCurrencyShort(totalIncTax), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
+  totalRow.push({ content: formatCurrencyShort(totalCh), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
   totalRow.push({ content: formatCurrencyShort(totalNetAll), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
   
   bodyRows.push(totalRow);
 
   // Dynamic column styles
   const colStyles: Record<number, any> = {
-    0: { halign: 'center', cellWidth: 10 },
+    0: { halign: 'center', cellWidth: 12 },
     1: { halign: 'left', cellWidth: 35 },
   };
   const deptColCount = deptIds.length;
   const totalCols = 2 + deptColCount + 6; // SR, Name + Depts + Total, CH, AAM, J.SAL, INC.TAX, Net
   for (let i = 2; i < totalCols - 6; i++) {
-    colStyles[i] = { halign: 'right', overflow: 'visible' as any };
+    colStyles[i] = { halign: 'right', overflow: 'linebreak' as any };
   }
-  colStyles[totalCols - 6] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // Total Share
-  colStyles[totalCols - 5] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // CH.AAM
-  colStyles[totalCols - 4] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // MUSI
-  colStyles[totalCols - 3] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // J.SAL
-  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // INC.TAX
-  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'visible' as any }; // Net Amount
+  colStyles[totalCols - 6] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // Total Share
+  colStyles[totalCols - 5] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // INC.TAX
+  colStyles[totalCols - 4] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // MUSI
+  colStyles[totalCols - 3] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // J.SAL
+  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // CH.AAM
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // Net Amount
 
   autoTable(doc, {
     startY: yPos,
@@ -1155,7 +1155,7 @@ export function exportIndividualPDF(data: IndividualReportData): void {
     body: bodyRows,
     theme: 'grid',
     styles: {
-      overflow: 'visible' as any,
+      overflow: 'linebreak' as any,
       textColor: [0, 0, 0],
       fontSize: 8,
     },
@@ -1247,10 +1247,10 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     tableHeader.push(getShortDeptName(deptNames[dId] || dId));
   }
   tableHeader.push('Total Share (Rs.)');
-  tableHeader.push('CH.AAM (Rs.)');
+  tableHeader.push('INC.TAX (Rs.)');
   tableHeader.push('MUSI (Rs.)');
   tableHeader.push('J.SAL (Rs.)');
-  tableHeader.push('INC.TAX (Rs.)');
+  tableHeader.push('CH.AAM (Rs.)');
   tableHeader.push('Net Amount (Rs.)');
 
   // Table rows
@@ -1262,10 +1262,10 @@ export function exportIndividualExcel(data: IndividualReportData): void {
       row.push(amt > 0 ? Math.round(amt * 100) / 100 : 0);
     }
     row.push(Math.round(s.grand_total * 100) / 100);
-    row.push(Math.round(s.taxes.ch * 100) / 100);
+    row.push(Math.round(s.taxes.inc_tax * 100) / 100);
     row.push(Math.round(s.taxes.aam_musi * 100) / 100);
     row.push(Math.round(s.taxes.j_sal * 100) / 100);
-    row.push(Math.round(s.taxes.inc_tax * 100) / 100);
+    row.push(Math.round(s.taxes.ch * 100) / 100);
     row.push(Math.round(s.net_amount * 100) / 100);
     tableRows.push(row);
   });
@@ -1283,10 +1283,10 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
   const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
   
-  totalRow.push(Math.round(totalCh * 100) / 100);
+  totalRow.push(Math.round(totalIncTax * 100) / 100);
   totalRow.push(Math.round(totalAam * 100) / 100);
   totalRow.push(Math.round(totalJSal * 100) / 100);
-  totalRow.push(Math.round(totalIncTax * 100) / 100);
+  totalRow.push(Math.round(totalCh * 100) / 100);
   totalRow.push(Math.round(totalNetAll * 100) / 100);
   
   tableRows.push(totalRow);
@@ -1309,10 +1309,10 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     cols.push({ wch: 15 });
   }
   cols.push({ wch: 15 }); // Total Share
-  cols.push({ wch: 12 }); // CH.AAM
+  cols.push({ wch: 12 }); // INC.TAX
   cols.push({ wch: 15 }); // MUSI
   cols.push({ wch: 12 }); // JSAL
-  cols.push({ wch: 12 }); // INC.TAX
+  cols.push({ wch: 12 }); // CH.AAM
   cols.push({ wch: 18 }); // Net
   ws['!cols'] = cols;
 

@@ -152,12 +152,15 @@ export async function GET(req: Request) {
         // 2. Remaining 3 taxes on the remaining amount
         if (MUSI_ELIGIBLE_STAFF_INDS.includes(staffCode)) {
           aam_musi = Number((remaining_amount / 10).toFixed(2));
+          // If MUSI is ON -> CH.AAM is OFF (skip it)
+          ch = 0;
         } else {
           aam_musi = 0;
+          // If MUSI is OFF -> CH.AAM applies normally
+          ch = Number((remaining_amount / 16).toFixed(2));
         }
 
         j_sal = Number((remaining_amount / 120).toFixed(2));
-        ch = Number((remaining_amount / 16).toFixed(2));
       }
 
       const total_tax = ch + aam_musi + j_sal + inc_tax;

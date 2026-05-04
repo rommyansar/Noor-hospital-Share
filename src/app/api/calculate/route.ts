@@ -480,9 +480,12 @@ export async function POST(req: Request) {
 
     const newResults: any[] = [];
 
+    const isDailyIncomeMode = dept.calculation_method === 'income' && dept.attendance_rule === 'daily';
+    const effectiveDeptTotalAmount = isDailyIncomeMode ? 0 : deptTotalAmount;
+
     // Determine total monthly income for addon pool calculation
-    const totalMonthlyIncome = deptTotalAmount > 0
-      ? deptTotalAmount
+    const totalMonthlyIncome = effectiveDeptTotalAmount > 0
+      ? effectiveDeptTotalAmount
       : (incomesData?.reduce((sum: number, d: any) => sum + (d.amount || 0), 0) || 0);
 
     // ── PROCESS ADD-ONS (unified, always from main income) ──
@@ -495,7 +498,7 @@ export async function POST(req: Request) {
       daysInMonth,
       globalLeavesByDate,
       incomesData || [],
-      deptTotalAmount,
+      effectiveDeptTotalAmount,
       deptData || [],
     );
     newResults.push(...addonResults);
@@ -798,8 +801,8 @@ export async function POST(req: Request) {
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${month}-${String(day).padStart(2, '0')}`;
         const dayData = incomesData?.find((d: any) => d.date === dateStr);
-        const income = deptTotalAmount > 0
-          ? deptTotalAmount / daysInMonth
+        const income = effectiveDeptTotalAmount > 0
+          ? effectiveDeptTotalAmount / daysInMonth
           : (dayData?.amount || 0);
 
         // Department-level presence: present_staff_ids is the PRIMARY source.
@@ -819,7 +822,7 @@ export async function POST(req: Request) {
           presentStaff = staffData.filter((s: any) => !onLeaveSet.has(s.id));
         }
 
-        if (presentStaff.length === 0 && dayData?.amount === 0 && deptTotalAmount === 0) continue;
+        if (presentStaff.length === 0 && dayData?.amount === 0 && effectiveDeptTotalAmount === 0) continue;
 
         const presentCountByRole: Record<string, number> = {};
         for (const s of presentStaff) {

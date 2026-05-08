@@ -766,6 +766,7 @@ export default function ReportsPage() {
                         <th style={{ textAlign: 'right', width: '110px', whiteSpace: 'nowrap' }}>MUSI</th>
                         <th style={{ textAlign: 'right', width: '90px', whiteSpace: 'nowrap' }}>J.SAL</th>
                         <th style={{ textAlign: 'right', width: '110px', whiteSpace: 'nowrap' }}>INC.TAX</th>
+                        <th style={{ textAlign: 'right', width: '90px', whiteSpace: 'nowrap' }}>DED</th>
                         <th style={{ textAlign: 'right', width: '130px', whiteSpace: 'nowrap' }}>Net Amount</th>
                       </tr>
                     </thead>
@@ -797,6 +798,9 @@ export default function ReportsPage() {
                           </td>
                           <td style={{ textAlign: 'right', fontSize: '13px', color: s.taxes.inc_tax > 0 ? '#f87171' : '#475569' }}>
                             {s.taxes.inc_tax > 0 ? `₹${s.taxes.inc_tax.toLocaleString('en-IN')}` : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#f59e0b', fontSize: '14px' }}>
+                            ₹{(s.taxes.ch + s.taxes.aam_musi + s.taxes.j_sal + s.taxes.inc_tax).toLocaleString('en-IN')}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 800, color: '#10b981', fontSize: '14px' }}>
                             ₹{s.net_amount.toLocaleString('en-IN')}
@@ -830,6 +834,11 @@ export default function ReportsPage() {
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#f87171' }}>
                           ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.taxes.inc_tax, 0)).toLocaleString('en-IN')}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '15px', color: '#f59e0b' }}>
+                          ₹{Math.round(
+                            individualReport.staff.reduce((s, st) => s + st.taxes.ch + st.taxes.aam_musi + st.taxes.j_sal + st.taxes.inc_tax, 0)
+                          ).toLocaleString('en-IN')}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '15px', color: '#10b981' }}>
                           ₹{Math.round(individualReport.staff.reduce((s, st) => s + st.net_amount, 0)).toLocaleString('en-IN')}

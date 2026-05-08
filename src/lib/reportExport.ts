@@ -559,10 +559,10 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const colStyles: Record<number, any> = {
       0: { halign: 'center', cellWidth: 10 },
       1: { halign: 'left', cellWidth: 35 },
-      2: { halign: 'left', cellWidth: 35 },
-      3: { halign: 'center', cellWidth: 20 },
-      4: { halign: 'left', cellWidth: 55 },
-      5: { halign: 'right', cellWidth: 25 },
+      2: { halign: 'left', cellWidth: 30 },
+      3: { halign: 'center', cellWidth: 14 },
+      4: { halign: 'left', cellWidth: 46 },
+      5: { halign: 'right', cellWidth: 38 },
     };
 
     autoTable(doc, {
@@ -571,7 +571,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       body: bodyRows,
       theme: 'grid',
       styles: {
-        overflow: 'linebreak',
+        overflow: 'hidden',
         textColor: [0, 0, 0],
       },
       headStyles: {
@@ -687,7 +687,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         ]],
         theme: 'grid',
         styles: {
-          overflow: 'linebreak',
+          overflow: 'hidden',
         },
         headStyles: {
           fillColor: [30, 41, 59], // slate-800
@@ -790,35 +790,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     yPos = (doc as any).lastAutoTable?.finalY || currentY + 20;
   }
 
-  // ── Signature Section ──
-  const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY || yPos + 50;
-  let sigY = finalY + 20;
-
-  // Check if we need a new page for signatures
-  if (sigY + 35 > pageHeight) {
-    doc.addPage();
-    sigY = 25;
-  }
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-
-  const margin = 14;
-  const sigSpacing = (pageWidth - margin * 2) / 4;
-  const lineLen = sigSpacing - 15;
-
-  const sigFields = ['Prepared By', 'Checked By', 'Approved By', 'Date'];
-  sigFields.forEach((label, i) => {
-    const x = margin + i * sigSpacing;
-    doc.setFontSize(8);
-    doc.text(`${label}:`, x, sigY);
-    doc.setDrawColor(100, 116, 139);
-    doc.setLineWidth(0.3);
-    doc.line(x, sigY + 6, x + lineLen, sigY + 6);
-  });
-
-  // Page numbers footer
+    // Page numbers footer
   const totalPages = doc.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
@@ -938,13 +910,14 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
       bodyRows.push([r.srNo, r.staffName, formatCurrency(r.workAmount), r.percentage, r.otBreakdown, formatCurrency(r.shareAmount)]);
     });
 
+    // Portrait Legal: pageWidth ~215mm, margins 15mm each side => ~185mm available
     const colStyles: Record<number, any> = {
-      0: { halign: 'center', cellWidth: 10 },
-      1: { halign: 'left', cellWidth: 40 },
-      2: { halign: 'right', cellWidth: 25 },
-      3: { halign: 'center', cellWidth: 15 },
-      4: { halign: 'left', cellWidth: 65 },
-      5: { halign: 'right', cellWidth: 25 },
+      0: { halign: 'center', cellWidth: 10 },  // Sr.
+      1: { halign: 'left', cellWidth: 38 },    // Staff Name
+      2: { halign: 'right', cellWidth: 24 },   // Work Amount
+      3: { halign: 'center', cellWidth: 13 },  // %
+      4: { halign: 'left', cellWidth: 58 },    // Breakdown
+      5: { halign: 'right', cellWidth: 35 },   // Share Amount — expanded from 25mm for large values
     };
 
     autoTable(doc, {
@@ -952,43 +925,16 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
       head: [headCols],
       body: bodyRows,
       theme: 'grid',
-      styles: { overflow: 'linebreak', textColor: [0, 0, 0] },
+      styles: { overflow: 'hidden', textColor: [0, 0, 0] },
       headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, halign: 'center' },
       bodyStyles: { fontSize: 10, cellPadding: 3, textColor: [0, 0, 0] },
       columnStyles: colStyles,
       alternateRowStyles: { fillColor: [245, 250, 248] },
-      margin: { left: 15, right: 15 },
+      margin: { left: 12, right: 12 },
     });
 
     yPos = (doc as any).lastAutoTable?.finalY + 15; // spacing between departments
   }
-
-  // ── Signature Section ──
-  const finalY = yPos;
-  let sigY = finalY;
-
-  if (sigY + 35 > pageHeight) {
-    doc.addPage();
-    sigY = 25;
-  }
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-
-  const margin = 14;
-  const sigSpacing = (pageWidth - margin * 2) / 4;
-  const lineLen = sigSpacing - 15;
-
-  const sigFields = ['Prepared By', 'Checked By', 'Approved By', 'Date'];
-  sigFields.forEach((label, i) => {
-    const x = margin + i * sigSpacing;
-    doc.setFontSize(8);
-    doc.text(`${label}:`, x, sigY);
-    doc.setDrawColor(100, 116, 139);
-    doc.setLineWidth(0.3);
-    doc.line(x, sigY + 6, x + lineLen, sigY + 6);
-  });
 
   // Page numbers footer
   const totalPages = doc.getNumberOfPages();
@@ -1058,7 +1004,7 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   yPos += 8;
 
   // ── Separator line ──
-  doc.setDrawColor(168, 85, 247); // purple
+  doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.6);
   doc.line(12, yPos, pageWidth - 12, yPos);
   yPos += 6;
@@ -1092,6 +1038,7 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   headCols.push('MUSI');
   headCols.push('J.SAL');
   headCols.push('CH.AAM');
+  headCols.push('DED');
   headCols.push('Net Amount');
 
   const bodyRows: any[][] = [];
@@ -1106,6 +1053,9 @@ export function exportIndividualPDF(data: IndividualReportData): void {
     row.push(s.taxes.aam_musi > 0 ? formatCurrencyShort(s.taxes.aam_musi) : '-');
     row.push(s.taxes.j_sal > 0 ? formatCurrencyShort(s.taxes.j_sal) : '-');
     row.push(s.taxes.ch > 0 ? formatCurrencyShort(s.taxes.ch) : '-');
+    // DED = sum of all taxes
+    const ded = s.taxes.ch + s.taxes.aam_musi + s.taxes.j_sal + s.taxes.inc_tax;
+    row.push(ded > 0 ? formatCurrencyShort(ded) : '-');
     row.push(formatCurrencyShort(s.net_amount));
     bodyRows.push(row);
   });
@@ -1116,94 +1066,94 @@ export function exportIndividualPDF(data: IndividualReportData): void {
     const deptTotal = data.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
     totalRow.push({ content: formatCurrencyShort(Math.round(deptTotal * 100) / 100), styles: { fontStyle: 'bold' } });
   }
-  totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
+  totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold' } });
   
   const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
   const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
   const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
   const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
+  const totalDed = totalCh + totalAam + totalJSal + totalIncTax;
   const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
   
-  totalRow.push({ content: formatCurrencyShort(totalIncTax), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
-  totalRow.push({ content: formatCurrencyShort(totalAam), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
-  totalRow.push({ content: formatCurrencyShort(totalJSal), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
-  totalRow.push({ content: formatCurrencyShort(totalCh), styles: { fontStyle: 'bold', textColor: [220, 38, 38] } });
-  totalRow.push({ content: formatCurrencyShort(totalNetAll), styles: { fontStyle: 'bold', textColor: [16, 130, 90] } });
+  totalRow.push({ content: formatCurrencyShort(totalIncTax), styles: { fontStyle: 'bold' } });
+  totalRow.push({ content: formatCurrencyShort(totalAam), styles: { fontStyle: 'bold' } });
+  totalRow.push({ content: formatCurrencyShort(totalJSal), styles: { fontStyle: 'bold' } });
+  totalRow.push({ content: formatCurrencyShort(totalCh), styles: { fontStyle: 'bold' } });
+  totalRow.push({ content: formatCurrencyShort(totalDed), styles: { fontStyle: 'bold' } });
+  totalRow.push({ content: formatCurrencyShort(totalNetAll), styles: { fontStyle: 'bold' } });
   
   bodyRows.push(totalRow);
 
-  // Dynamic column styles
-  const colStyles: Record<number, any> = {
-    0: { halign: 'center', cellWidth: 12 },
-    1: { halign: 'left', cellWidth: 35 },
-  };
+  // ── Column Width Calculation (proportional, guaranteed to fit within page) ──
   const deptColCount = deptIds.length;
-  const totalCols = 2 + deptColCount + 6; // SR, Name + Depts + Total, CH, AAM, J.SAL, INC.TAX, Net
-  for (let i = 2; i < totalCols - 6; i++) {
-    colStyles[i] = { halign: 'right', overflow: 'linebreak' as any };
+  const totalCols = 2 + deptColCount + 7; // IND + Name + Depts + Total Share + 5 taxes + Net Amount = 9 + deptCount
+  // Table margins are 8mm left + 8mm right = 16mm
+  const availWidth = pageWidth - 16; // 340mm for Legal landscape
+
+  // Weight for each column type (higher = more space)
+  const WGT_IND = 1.4;
+  const WGT_NAME = 2.4;
+  const WGT_DEPT = 2.0;
+  const WGT_TOTAL = 2.4;
+  const WGT_TAX = 2.0;
+  const WGT_NET = 3.0;
+
+  // Sum of all weights
+  const sumWgt = WGT_IND + WGT_NAME + WGT_TOTAL + 5 * WGT_TAX + WGT_NET + deptColCount * WGT_DEPT;
+  const px = availWidth / sumWgt;
+
+  // Calculate exact column widths to perfectly fill the available width
+  const W_IND = px * WGT_IND;
+  const W_NAME = px * WGT_NAME;
+  const W_DEPT = px * WGT_DEPT;
+  const W_TOTAL = px * WGT_TOTAL;
+  const W_TAX = px * WGT_TAX;
+  const W_NET = px * WGT_NET;
+
+  // Build column styles
+  const colStyles: Record<number, any> = {};
+  colStyles[0] = { halign: 'center', cellWidth: W_IND, overflow: 'hidden' };                                // IND No.
+  colStyles[1] = { halign: 'left', cellWidth: W_NAME, overflow: 'linebreak' };                                 // Staff Name
+  for (let i = 2; i < totalCols - 7; i++) {
+    colStyles[i] = { halign: 'right', cellWidth: W_DEPT, overflow: 'hidden' };                              // Department columns
   }
-  colStyles[totalCols - 6] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // Total Share
-  colStyles[totalCols - 5] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // INC.TAX
-  colStyles[totalCols - 4] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // MUSI
-  colStyles[totalCols - 3] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // J.SAL
-  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // CH.AAM
-  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', overflow: 'linebreak' as any }; // Net Amount
+  colStyles[totalCols - 7] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TOTAL, overflow: 'hidden' }; // Total Share
+  colStyles[totalCols - 6] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // INC.TAX
+  colStyles[totalCols - 5] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // MUSI
+  colStyles[totalCols - 4] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // J.SAL
+  colStyles[totalCols - 3] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // CH.AAM
+  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TAX, overflow: 'hidden' };  // DED
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', cellWidth: W_NET, overflow: 'hidden' };   // Net Amount
 
   autoTable(doc, {
     startY: yPos,
     head: [headCols],
     body: bodyRows,
     theme: 'grid',
+    tableWidth: availWidth,
     styles: {
-      overflow: 'linebreak' as any,
       textColor: [0, 0, 0],
-      fontSize: 8,
+      fontSize: 7,
+      cellPadding: 0.5,
     },
     headStyles: {
-      fillColor: [126, 58, 242],
+      fillColor: [60, 60, 60],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7,
       halign: 'center',
       overflow: 'linebreak',
     },
     bodyStyles: {
-      fontSize: 8,
-      cellPadding: 2,
+      fontSize: 7,
+      cellPadding: 0.5,
       textColor: [0, 0, 0],
     },
     columnStyles: colStyles,
     alternateRowStyles: {
-      fillColor: [248, 245, 255],
+      fillColor: [240, 240, 240],
     },
     margin: { left: 8, right: 8 },
-  });
-
-  // ── Signature Section ──
-  const finalY = (doc as any).lastAutoTable?.finalY || yPos + 50;
-  let sigY = finalY + 20;
-
-  if (sigY + 35 > pageHeight) {
-    doc.addPage();
-    sigY = 25;
-  }
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-
-  const margin = 14;
-  const sigSpacing = (pageWidth - margin * 2) / 4;
-  const lineLen = sigSpacing - 15;
-
-  const sigFields = ['Prepared By', 'Checked By', 'Approved By', 'Date'];
-  sigFields.forEach((label, i) => {
-    const x = margin + i * sigSpacing;
-    doc.setFontSize(8);
-    doc.text(`${label}:`, x, sigY);
-    doc.setDrawColor(100, 116, 139);
-    doc.setLineWidth(0.3);
-    doc.line(x, sigY + 6, x + lineLen, sigY + 6);
   });
 
   // Page numbers footer
@@ -1251,6 +1201,7 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   tableHeader.push('MUSI (Rs.)');
   tableHeader.push('J.SAL (Rs.)');
   tableHeader.push('CH.AAM (Rs.)');
+  tableHeader.push('DED (Rs.)');
   tableHeader.push('Net Amount (Rs.)');
 
   // Table rows
@@ -1266,6 +1217,8 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     row.push(Math.round(s.taxes.aam_musi * 100) / 100);
     row.push(Math.round(s.taxes.j_sal * 100) / 100);
     row.push(Math.round(s.taxes.ch * 100) / 100);
+    const ded = Math.round((s.taxes.ch + s.taxes.aam_musi + s.taxes.j_sal + s.taxes.inc_tax) * 100) / 100;
+    row.push(ded > 0 ? ded : 0);
     row.push(Math.round(s.net_amount * 100) / 100);
     tableRows.push(row);
   });
@@ -1281,12 +1234,14 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
   const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
   const totalIncTax = data.staff.reduce((s, st) => s + st.taxes.inc_tax, 0);
+  const totalDed = totalCh + totalAam + totalJSal + totalIncTax;
   const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
   
   totalRow.push(Math.round(totalIncTax * 100) / 100);
   totalRow.push(Math.round(totalAam * 100) / 100);
   totalRow.push(Math.round(totalJSal * 100) / 100);
   totalRow.push(Math.round(totalCh * 100) / 100);
+  totalRow.push(Math.round(totalDed * 100) / 100);
   totalRow.push(Math.round(totalNetAll * 100) / 100);
   
   tableRows.push(totalRow);
@@ -1313,11 +1268,12 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   cols.push({ wch: 15 }); // MUSI
   cols.push({ wch: 12 }); // JSAL
   cols.push({ wch: 12 }); // CH.AAM
+  cols.push({ wch: 12 }); // DED
   cols.push({ wch: 18 }); // Net
   ws['!cols'] = cols;
 
   // Merge header rows
-  const totalCols = 3 + deptIds.length + 6;
+  const totalCols = 3 + deptIds.length + 7;
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } },

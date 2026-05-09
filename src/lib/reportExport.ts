@@ -571,7 +571,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       body: bodyRows,
       theme: 'grid',
       styles: {
-        overflow: 'hidden',
+        overflow: 'linebreak',
         textColor: [0, 0, 0],
       },
       headStyles: {
@@ -687,7 +687,7 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
         ]],
         theme: 'grid',
         styles: {
-          overflow: 'hidden',
+          overflow: 'linebreak',
         },
         headStyles: {
           fillColor: [30, 41, 59], // slate-800
@@ -925,7 +925,7 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
       head: [headCols],
       body: bodyRows,
       theme: 'grid',
-      styles: { overflow: 'hidden', textColor: [0, 0, 0] },
+      styles: { overflow: 'linebreak', textColor: [0, 0, 0] },
       headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, halign: 'center' },
       bodyStyles: { fontSize: 10, cellPadding: 3, textColor: [0, 0, 0] },
       columnStyles: colStyles,
@@ -1112,18 +1112,18 @@ export function exportIndividualPDF(data: IndividualReportData): void {
 
   // Build column styles
   const colStyles: Record<number, any> = {};
-  colStyles[0] = { halign: 'center', cellWidth: W_IND, overflow: 'hidden' };                                // IND No.
+  colStyles[0] = { halign: 'center', cellWidth: W_IND, overflow: 'linebreak' };                                // IND No.
   colStyles[1] = { halign: 'left', cellWidth: W_NAME, overflow: 'linebreak' };                                 // Staff Name
   for (let i = 2; i < totalCols - 7; i++) {
-    colStyles[i] = { halign: 'right', cellWidth: W_DEPT, overflow: 'hidden' };                              // Department columns
+    colStyles[i] = { halign: 'right', cellWidth: W_DEPT, overflow: 'linebreak' };                              // Department columns
   }
-  colStyles[totalCols - 7] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TOTAL, overflow: 'hidden' }; // Total Share
-  colStyles[totalCols - 6] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // INC.TAX
-  colStyles[totalCols - 5] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // MUSI
-  colStyles[totalCols - 4] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // J.SAL
-  colStyles[totalCols - 3] = { halign: 'right', cellWidth: W_TAX, overflow: 'hidden' };                     // CH.AAM
-  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TAX, overflow: 'hidden' };  // DED
-  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', cellWidth: W_NET, overflow: 'hidden' };   // Net Amount
+  colStyles[totalCols - 7] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TOTAL, overflow: 'linebreak' }; // Total Share
+  colStyles[totalCols - 6] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // INC.TAX
+  colStyles[totalCols - 5] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // MUSI
+  colStyles[totalCols - 4] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // J.SAL
+  colStyles[totalCols - 3] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // CH.AAM
+  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TAX, overflow: 'linebreak' };  // DED
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', cellWidth: W_NET, overflow: 'linebreak' };   // Net Amount
 
   autoTable(doc, {
     startY: yPos,

@@ -87,24 +87,26 @@ const MONTHS = [
 function normPct(val: string | number): string {
   if (typeof val === 'number') {
     if (val % 1 === 0) return `${val}%`;
-    const s4 = val.toFixed(4);
-    if (s4.endsWith('3333') || s4.endsWith('6667')) {
-      return `${parseFloat(val.toFixed(1))}%`;
-    }
-    return `${parseFloat(val.toFixed(4))}%`;
+    // Strip trailing zeros: 3.0000 → 3, 3.50 → 3.5
+    const cleaned = parseFloat(val.toFixed(4));
+    if (cleaned % 1 === 0) return `${cleaned}%`;
+    return `${cleaned}%`;
   }
   const s = String(val).trim();
   if (!s) return '';
-  // Already has %
-  if (s.endsWith('%')) return s;
+  // Already has % — still normalize the numeric part to strip trailing zeros
+  if (s.endsWith('%')) {
+    const numPart = parseFloat(s.replace('%', ''));
+    if (!isNaN(numPart)) {
+      if (numPart % 1 === 0) return `${numPart}%`;
+      return `${parseFloat(numPart.toFixed(4))}%`;
+    }
+    return s;
+  }
   // Raw numeric string
   const n = parseFloat(s);
   if (!isNaN(n)) {
     if (n % 1 === 0) return `${n}%`;
-    const s4 = n.toFixed(4);
-    if (s4.endsWith('3333') || s4.endsWith('6667')) {
-      return `${parseFloat(n.toFixed(1))}%`;
-    }
     return `${parseFloat(n.toFixed(4))}%`;
   }
   return s;
@@ -176,7 +178,7 @@ function buildNormalRows(data: ReportExportData): NormalRow[] {
       staffName: s.staff_name,
       workAmount,
       percentage: displayPercentage,
-      shareAmount: Math.round(s.total_share * 100) / 100,
+      shareAmount: s.total_share,
       otBreakdown,
       origin: s.origin_department,
     };
@@ -263,7 +265,7 @@ function buildDetailedComprehensiveRows(data: ReportExportData): DetailedCompreh
       distributionType,
       groupCount,
       calculationBreakdown,
-      finalShare: Math.round(s.total_share * 100) / 100,
+      finalShare: s.total_share,
     });
   });
 
@@ -1064,7 +1066,7 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   const totalRow: any[] = ['', { content: 'TOTAL', styles: { fontStyle: 'bold' } }];
   for (const dId of deptIds) {
     const deptTotal = data.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
-    totalRow.push({ content: formatCurrencyShort(Math.round(deptTotal * 100) / 100), styles: { fontStyle: 'bold' } });
+    totalRow.push({ content: formatCurrencyShort(deptTotal), styles: { fontStyle: 'bold' } });
   }
   totalRow.push({ content: formatCurrencyShort(data.grand_total), styles: { fontStyle: 'bold' } });
   
@@ -1210,16 +1212,16 @@ export function exportIndividualExcel(data: IndividualReportData): void {
     const row: (string | number)[] = [idx + 1, s.staff_name, s.role];
     for (const dId of deptIds) {
       const amt = s.dept_totals[dId] || 0;
-      row.push(amt > 0 ? Math.round(amt * 100) / 100 : 0);
+      row.push(amt > 0 ? amt : 0);
     }
-    row.push(Math.round(s.grand_total * 100) / 100);
-    row.push(Math.round(s.taxes.inc_tax * 100) / 100);
-    row.push(Math.round(s.taxes.aam_musi * 100) / 100);
-    row.push(Math.round(s.taxes.j_sal * 100) / 100);
-    row.push(Math.round(s.taxes.ch * 100) / 100);
-    const ded = Math.round((s.taxes.ch + s.taxes.aam_musi + s.taxes.j_sal + s.taxes.inc_tax) * 100) / 100;
+    row.push(s.grand_total);
+    row.push(s.taxes.inc_tax);
+    row.push(s.taxes.aam_musi);
+    row.push(s.taxes.j_sal);
+    row.push(s.taxes.ch);
+    const ded = s.taxes.ch + s.taxes.aam_musi + s.taxes.j_sal + s.taxes.inc_tax;
     row.push(ded > 0 ? ded : 0);
-    row.push(Math.round(s.net_amount * 100) / 100);
+    row.push(s.net_amount);
     tableRows.push(row);
   });
 
@@ -1227,9 +1229,9 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   const totalRow: (string | number)[] = ['', 'TOTAL', ''];
   for (const dId of deptIds) {
     const deptTotal = data.staff.reduce((s, st) => s + (st.dept_totals[dId] || 0), 0);
-    totalRow.push(Math.round(deptTotal * 100) / 100);
+    totalRow.push(deptTotal);
   }
-  totalRow.push(Math.round(data.grand_total * 100) / 100);
+  totalRow.push(data.grand_total);
   const totalCh = data.staff.reduce((s, st) => s + st.taxes.ch, 0);
   const totalAam = data.staff.reduce((s, st) => s + st.taxes.aam_musi, 0);
   const totalJSal = data.staff.reduce((s, st) => s + st.taxes.j_sal, 0);
@@ -1237,12 +1239,12 @@ export function exportIndividualExcel(data: IndividualReportData): void {
   const totalDed = totalCh + totalAam + totalJSal + totalIncTax;
   const totalNetAll = data.staff.reduce((s, st) => s + st.net_amount, 0);
   
-  totalRow.push(Math.round(totalIncTax * 100) / 100);
-  totalRow.push(Math.round(totalAam * 100) / 100);
-  totalRow.push(Math.round(totalJSal * 100) / 100);
-  totalRow.push(Math.round(totalCh * 100) / 100);
-  totalRow.push(Math.round(totalDed * 100) / 100);
-  totalRow.push(Math.round(totalNetAll * 100) / 100);
+  totalRow.push(totalIncTax);
+  totalRow.push(totalAam);
+  totalRow.push(totalJSal);
+  totalRow.push(totalCh);
+  totalRow.push(totalDed);
+  totalRow.push(totalNetAll);
   
   tableRows.push(totalRow);
 

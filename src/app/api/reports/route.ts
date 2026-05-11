@@ -468,7 +468,6 @@ export async function GET(req: Request) {
     report_heading: deptTotalRes.data?.report_heading || null,
     staff: aggregated.map((s) => ({
       ...s,
-      total_share: Math.round(s.total_share * 100) / 100,
     })),
   };
 

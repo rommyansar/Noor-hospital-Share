@@ -128,7 +128,7 @@ export async function GET(req: Request) {
   // Convert to array and sort by grand total descending
   const staffList = Object.values(staffMap)
     .map(s => {
-      const grand_total = Math.round(s.grand_total * 100) / 100;
+      const grand_total = s.grand_total;
       const taxes = taxMap[s.staff_code || ''] || { inc_tax: 0, enabled: true };
       
       let ch = 0;
@@ -164,7 +164,7 @@ export async function GET(req: Request) {
       }
 
       const total_tax = ch + aam_musi + j_sal + inc_tax;
-      const net_amount = Math.round((grand_total - total_tax) * 100) / 100;
+      const net_amount = grand_total - total_tax;
 
       return {
         ...s,
@@ -173,7 +173,7 @@ export async function GET(req: Request) {
         total_tax,
         net_amount,
         dept_totals: Object.fromEntries(
-          Object.entries(s.dept_totals).map(([k, v]) => [k, Math.round(v * 100) / 100])
+          Object.entries(s.dept_totals).map(([k, v]) => [k, v])
         ),
       };
     })
@@ -187,7 +187,7 @@ export async function GET(req: Request) {
     department_ids: deptIds,
     department_names: deptNameMap,
     staff_count: staffList.length,
-    grand_total: Math.round(grandTotal * 100) / 100,
+    grand_total: grandTotal,
     staff: staffList,
   });
 }

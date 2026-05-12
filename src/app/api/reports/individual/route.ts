@@ -136,9 +136,10 @@ export async function GET(req: Request) {
       let j_sal = 0;
       let inc_tax = 0;
 
-      if (taxes.enabled !== false) {
-        const staffCode = (s.staff_code || '').trim();
+      const staffCode = (s.staff_code || '').trim();
+      const isTemporary = staffCode.toUpperCase().startsWith('T-');
 
+      if (taxes.enabled !== false && !isTemporary) {
         // 1. INC.TAX deduction first
         // INC.TAX is ONLY for doctors listed in INC_TAX_DEFAULTS.
         // Always use the hardcoded default percentage — legacy values in taxData.json

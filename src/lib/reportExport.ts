@@ -561,10 +561,10 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
     const colStyles: Record<number, any> = {
       0: { halign: 'center', cellWidth: 10 },
       1: { halign: 'left', cellWidth: 35 },
-      2: { halign: 'left', cellWidth: 30 },
+      2: { halign: 'left', cellWidth: 30, overflow: 'visible' },
       3: { halign: 'center', cellWidth: 14 },
       4: { halign: 'left', cellWidth: 46 },
-      5: { halign: 'right', cellWidth: 38 },
+      5: { halign: 'right', cellWidth: 38, overflow: 'visible' },
     };
 
     autoTable(doc, {
@@ -644,12 +644,12 @@ export function exportPDF(data: ReportExportData, type: ReportType): void {
       2:  { halign: 'center', cellWidth: 14 },    // Total Days
       3:  { halign: 'center', cellWidth: 14 },    // Off/CL
       4:  { halign: 'center', cellWidth: 16 },    // Working Days
-      5:  { halign: 'right', cellWidth: 30 },     // Working Amount
+      5:  { halign: 'right', cellWidth: 30, overflow: 'visible' },     // Working Amount
       6:  { halign: 'center', cellWidth: 18 },    // %
       7:  { halign: 'center', cellWidth: 20 },    // Distribution
       8:  { halign: 'center', cellWidth: 14 },    // Group Count
       9:  { halign: 'left', cellWidth: 'auto' },  // Calculation Breakdown
-      10: { halign: 'right', cellWidth: 30 },     // Final Share
+      10: { halign: 'right', cellWidth: 30, overflow: 'visible' },     // Final Share
     };
 
     // Helper to render a section with a section header
@@ -916,10 +916,10 @@ export function exportCombinedPDF(dataList: ReportExportData[]): void {
     const colStyles: Record<number, any> = {
       0: { halign: 'center', cellWidth: 10 },  // Sr.
       1: { halign: 'left', cellWidth: 38 },    // Staff Name
-      2: { halign: 'right', cellWidth: 24 },   // Work Amount
+      2: { halign: 'right', cellWidth: 24, overflow: 'visible' },   // Work Amount
       3: { halign: 'center', cellWidth: 13 },  // %
       4: { halign: 'left', cellWidth: 58 },    // Breakdown
-      5: { halign: 'right', cellWidth: 35 },   // Share Amount — expanded from 25mm for large values
+      5: { halign: 'right', cellWidth: 35, overflow: 'visible' },   // Share Amount — expanded from 25mm for large values
     };
 
     autoTable(doc, {
@@ -1117,15 +1117,15 @@ export function exportIndividualPDF(data: IndividualReportData): void {
   colStyles[0] = { halign: 'center', cellWidth: W_IND, overflow: 'linebreak' };                                // IND No.
   colStyles[1] = { halign: 'left', cellWidth: W_NAME, overflow: 'linebreak' };                                 // Staff Name
   for (let i = 2; i < totalCols - 7; i++) {
-    colStyles[i] = { halign: 'right', cellWidth: W_DEPT, overflow: 'linebreak' };                              // Department columns
+    colStyles[i] = { halign: 'right', cellWidth: W_DEPT, overflow: 'visible' };                                // Department columns
   }
-  colStyles[totalCols - 7] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TOTAL, overflow: 'linebreak' }; // Total Share
-  colStyles[totalCols - 6] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // INC.TAX
-  colStyles[totalCols - 5] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // MUSI
-  colStyles[totalCols - 4] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // J.SAL
-  colStyles[totalCols - 3] = { halign: 'right', cellWidth: W_TAX, overflow: 'linebreak' };                     // CH.AAM
-  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TAX, overflow: 'linebreak' };  // DED
-  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', cellWidth: W_NET, overflow: 'linebreak' };   // Net Amount
+  colStyles[totalCols - 7] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TOTAL, overflow: 'visible' }; // Total Share
+  colStyles[totalCols - 6] = { halign: 'right', cellWidth: W_TAX, overflow: 'visible' };                     // INC.TAX
+  colStyles[totalCols - 5] = { halign: 'right', cellWidth: W_TAX, overflow: 'visible' };                     // MUSI
+  colStyles[totalCols - 4] = { halign: 'right', cellWidth: W_TAX, overflow: 'visible' };                     // J.SAL
+  colStyles[totalCols - 3] = { halign: 'right', cellWidth: W_TAX, overflow: 'visible' };                     // CH.AAM
+  colStyles[totalCols - 2] = { halign: 'right', fontStyle: 'bold', cellWidth: W_TAX, overflow: 'visible' };  // DED
+  colStyles[totalCols - 1] = { halign: 'right', fontStyle: 'bold', cellWidth: W_NET, overflow: 'visible' };   // Net Amount
 
   autoTable(doc, {
     startY: yPos,
